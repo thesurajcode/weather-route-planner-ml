@@ -1,0 +1,312 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import 'leaflet-polylinedecorator';
+import './App.css';
+
+// Fix Icons
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Custom Icons
+const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🚗</div>', className: 'custom-car-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
+const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
+
+// --- COMPONENT: DRAWS ARROWS ON ROUTE ---
+function RouteArrows({ positions }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (!map || !positions || positions.length === 0) return;
+
+        // Create the arrow decorator
+        const arrows = L.polylineDecorator(positions, {
+            patterns: [
+                {
+                    offset: '100px',     
+                    repeat: '200px',     
+                    symbol: L.Symbol.arrowHead({
+                        pixelSize: 10,   
+                        polygon: false,  
+                        headAngle: 50,   
+                        pathOptions: { 
+                            stroke: true, 
+                            color: 'white', 
+                            weight: 2.5, 
+                            opacity: 1   
+                        } 
+                    })
+                }
+            ]
+        });
+
+        arrows.addTo(map);
+        return () => { map.removeLayer(arrows); };
+    }, [map, positions]);
+
+    return null;
+}
+
+// Auto-center map
+function RecenterMap({ position }) {
+    const map = useMap();
+    useEffect(() => { if(position) map.flyTo(position, 16, { animate: true }); }, [position, map]);
+    return null;
+}
+
+function App() {
+  const delhiPosition = [28.6139, 77.2090];
+  const [startAddress, setStartAddress] = useState('');
+  const [endAddress, setEndAddress] = useState('');
+  const [allRoutes, setAllRoutes] = useState(null);
+  const [currentRoute, setCurrentRoute] = useState(null);
+  const [weather, setWeather] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [showLegend, setShowLegend] = useState(false);
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  
+  // --- NEW STATE FOR SMART TIP ---
+  const [recommendation, setRecommendation] = useState(null);
+  
+  const watchId = useRef(null);
+
+  const getDestinationCoords = () => {
+    if (!currentRoute?.geometry?.coordinates) return null;
+    const coords = currentRoute.geometry.coordinates;
+    const lastPoint = coords[coords.length - 1]; 
+    return [lastPoint[1], lastPoint[0]]; // [lat, lon]
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    setStartAddress("Locating...");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const res = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          if (data.features.length > 0) {
+            const p = data.features[0].properties;
+            setStartAddress([p.name, p.street, p.city].filter(Boolean).join(", "));
+          } else setStartAddress(`${latitude}, ${longitude}`);
+        } catch { setStartAddress(`${latitude}, ${longitude}`); }
+    }, () => setStartAddress(""), { enableHighAccuracy: true });
+  };
+
+  const handleFindRoute = async () => {
+    if (!startAddress || !endAddress) return alert('Enter addresses.');
+    setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
+    
+    try {
+      // FIX: Removed the comment that was breaking the code
+      const apiUrl = import.meta.env.PROD 
+        ? 'https://route-safety-backend.onrender.com/api/route' 
+        : 'http://localhost:5001/api/route';
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: startAddress, end: endAddress }),
+      });
+      const data = await res.json();
+      
+      if (data.routes) {
+        setAllRoutes(data.routes);
+        setCurrentRoute(data.routes.moderate);
+        setWeather(data.weather);
+        setRecommendation(data.recommendation);
+      } else {
+        alert("No routes found.");
+      }
+    } catch (e) { 
+        alert("Error: " + e.message); 
+    } finally { 
+        setLoading(false); 
+    }
+  };
+
+  const toggleNavigation = () => {
+    if (isNavigating) {
+      setIsNavigating(false);
+      setShowReportMenu(false);
+      if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
+      setCurrentLocation(null);
+    } else {
+      setIsNavigating(true);
+      navigator.geolocation.getCurrentPosition(p => setCurrentLocation([p.coords.latitude, p.coords.longitude]));
+      watchId.current = navigator.geolocation.watchPosition(p => setCurrentLocation([p.coords.latitude, p.coords.longitude]), console.error, { enableHighAccuracy: true });
+    }
+  };
+
+  const confirmHazard = (type) => {
+    if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
+    const [lat, lon] = currentLocation;
+    const time = new Date().toLocaleTimeString();
+    alert(`✅ REPORT SUBMITTED!\n\nType: ${type}\n📍 Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🕒 Time: ${time}`);
+    setShowReportMenu(false);
+  };
+
+  const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
+  const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
+
+  const calculateSafeSpeed = (riskScore, roadType = 'City Street') => {
+    let baseSpeed = roadType === 'Highway' ? 80 : 50; 
+    const reductionFactor = (riskScore / 10) * 0.05; 
+    let safeSpeed = baseSpeed * (1 - reductionFactor);
+    if (riskScore > 75) safeSpeed = Math.min(safeSpeed, 30); 
+    return Math.round(safeSpeed);
+  };
+
+  const currentSafeSpeed = currentRoute 
+    ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance > 15 ? 'Highway' : 'City Street') 
+    : 0;
+
+  return (
+    <div className="app-container">
+      
+      {/* 1. TOP BAR */}
+      <div className="top-bar">
+        <div className="input-row">
+            <input type="text" value={startAddress} onChange={(e) => setStartAddress(e.target.value)} placeholder="Start Location" />
+            <button onClick={handleUseCurrentLocation} className="icon-btn">📍</button>
+        </div>
+        <div className="input-row">
+            <input type="text" value={endAddress} onChange={(e) => setEndAddress(e.target.value)} placeholder="Destination" />
+        </div>
+      </div>
+
+      {/* 2. MIDDLE MAP AREA */}
+      <div className="map-wrapper">
+        
+        {/* --- SMART DEPARTURE TIP CARD (NEW) --- */}
+        {recommendation && (
+            <div style={{
+                position: 'absolute', 
+                top: '10px', left: '50%', transform: 'translateX(-50%)',
+                background: recommendation.shouldWait ? '#fff3cd' : '#d4edda', // Yellow if wait, Green if go
+                color: '#333', padding: '10px 15px', borderRadius: '20px',
+                fontSize: '13px', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                zIndex: 1000, width: '90%', maxWidth: '350px', textAlign: 'center',
+                border: recommendation.shouldWait ? '1px solid #ffeeba' : '1px solid #c3e6cb'
+            }}>
+                {recommendation.text}
+            </div>
+        )}
+
+        {/* INFO WINDOW */}
+        {currentRoute && weather && (
+            <div className="weather-float">
+                <div className="score-circle" style={{ borderColor: currentRoute.safety.color }}>{currentRoute.safety.score}</div>
+                <div style={{ textAlign: 'left' }}>
+                    <strong style={{ display: 'block', marginBottom: '2px' }}>{currentRoute.safety.message}</strong>
+                    <div style={{ fontSize: '12px', color: '#555', marginBottom: '2px' }}>
+                        ⏳ {currentRoute.summary.duration} | 📏 {currentRoute.summary.distance}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#333', fontWeight: '500' }}>
+                        🌡️ Temp: {weather.temperature}°C 
+                    </div>
+                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: getAqiColor(weather.aqi) }}>
+                        💨 AQI: {weather.aqi} - {weather.aqiText}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* SPEED LIMIT SIGN */}
+        {isNavigating && currentRoute && (
+            <div className="speed-limit-sign" title="AI Recommended Safe Speed">
+                <div style={{ fontSize: '10px', textTransform: 'uppercase' }}>Safe</div>
+                <div style={{ fontSize: '28px', fontWeight: 'bold', lineHeight: '1' }}>
+                    {currentSafeSpeed}
+                </div>
+                <div style={{ fontSize: '10px' }}>km/h</div>
+            </div>
+        )}
+
+        {/* LEGEND BUTTON */}
+        <button className="legend-btn" title="Help" onClick={() => setShowLegend(!showLegend)} style={{ background: showLegend ? '#eee' : 'white' }}>?</button>
+        {showLegend && (
+            <div className="legend-box" onClick={() => setShowLegend(false)}>
+                 <h4 style={{margin:'0 0 8px 0'}}>Map Guide</h4>
+                 <div style={{fontSize:'11px', fontWeight:'bold', color:'#777', marginBottom:'4px'}}>SAFETY SCORE</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> Safe (0-30)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> Moderate (31-70)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> High Risk (71+)</div>
+                 <hr style={{margin:'8px 0', border:0, borderTop:'1px solid #eee'}}/>
+                 <div style={{fontSize:'11px', fontWeight:'bold', color:'#777', marginBottom:'4px'}}>AIR QUALITY</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 1-2: Good</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 4-5: Hazardous</div>
+                 <hr style={{margin:'8px 0', border:0, borderTop:'1px solid #eee'}}/>
+                 <div className="legend-item">🚗 Your Car</div>
+                 <div className="legend-item">🏁 Destination</div>
+            </div>
+        )}
+
+        {/* REPORT HAZARD */}
+        {isNavigating && (
+            <>
+                <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
+                {showReportMenu && (
+                    <div className="report-menu">
+                        <div style={{ fontWeight: 'bold', marginBottom: '10px', textAlign:'center' }}>Report Hazard</div>
+                        <button className="menu-item" onClick={() => confirmHazard('Pothole')}>🕳️ Pothole</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Accident')}>💥 Accident</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Heavy Fog')}>🌫️ Heavy Fog</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Police')}>👮 Police</button>
+                        <button className="menu-cancel" onClick={() => setShowReportMenu(false)}>Cancel</button>
+                    </div>
+                )}
+            </>
+        )}
+
+        <MapContainer center={delhiPosition} zoom={13} zoomControl={false}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            
+            {/* The Route Line */}
+            {currentRoute && <Polyline positions={currentRoute.geometry.coordinates.map(c => [c[1], c[0]])} color={currentRoute.safety.color} weight={6} />}
+            
+            {/* --- ARROWS ON LINE --- */}
+            {currentRoute && (
+                <RouteArrows positions={currentRoute.geometry.coordinates.map(c => [c[1], c[0]])} />
+            )}
+
+            {/* Moving Car */}
+            {isNavigating && currentLocation && (
+                <> <Marker position={currentLocation} icon={carIcon}><Popup>You</Popup></Marker> <RecenterMap position={currentLocation} /> </>
+            )}
+
+            {/* Destination Flag */}
+            {currentRoute && (
+                <Marker position={getDestinationCoords()} icon={destIcon}>
+                    <Popup>Destination: {endAddress}</Popup>
+                </Marker>
+            )}
+
+        </MapContainer>
+      </div>
+
+      {/* 3. BOTTOM BUTTONS */}
+      <div className="bottom-bar">
+        {allRoutes && allRoutes.count > 1 && (
+            <div className="filter-row">
+                <button className="filter-btn" style={{background: '#00cc66', opacity: currentRoute===allRoutes.safest?1:0.5}} onClick={() => selectRoute('safest')}>🛡️ Safe</button>
+                <button className="filter-btn" style={{background: '#007bff', opacity: currentRoute===allRoutes.moderate?1:0.5}} onClick={() => selectRoute('moderate')}>⭐ Best</button>
+                <button className="filter-btn" style={{background: '#ff4d4d', opacity: currentRoute===allRoutes.fastest?1:0.5}} onClick={() => selectRoute('fastest')}>⚡ Fast</button>
+            </div>
+        )}
+
+        <div className="button-row">
+            <button onClick={handleFindRoute} disabled={loading} className="action-btn blue">{loading ? 'Searching...' : 'Get Route'}</button>
+            <button onClick={toggleNavigation} className={`action-btn ${isNavigating ? 'red' : 'green'}`}>{isNavigating ? "🛑 Stop" : "🚀 Drive"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
