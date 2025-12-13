@@ -1,16 +1,16 @@
-# requirements.txt - Cleaned for Production Deployment
+# requirements.txt - MINIMAL PRODUCTION SET
 
 [global]
 build-system = pep517
 
-# Core ML Libraries (Needed for app.py to run)
-Flask==2.3.3
+# --- CORE APP REQUIREMENTS ---
+Flask
 gunicorn
 xgboost
 scikit-learn
 pandas
 numpy
 
-# Other essential utilities (for API and data)
+# --- Keep this line if you use JSON/data utilities ---
 scipy
 joblib
