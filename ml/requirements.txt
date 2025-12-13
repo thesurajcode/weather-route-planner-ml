@@ -1,3 +1,10 @@
+[global]
+build-system = pep517
+flask
+gunicorn
+xgboost
+scikit-learn
+pandas
 annotated-types==0.7.0
 anyio==4.10.0
 argon2-cffi==25.1.0
@@ -151,3 +158,4 @@ websocket-client==1.9.0
 Werkzeug==2.3.7
 widgetsnbextension==4.0.15
 xgboost==3.1.2
+
