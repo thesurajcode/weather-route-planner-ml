@@ -19,14 +19,17 @@ const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;
 function RouteArrows({ positions }) {
     const map = useMap();
     useEffect(() => {
-        // Safety check: Don't try to draw if positions are empty/null
         if (!map || !positions || positions.length === 0) return;
         
-        const arrows = L.polylineDecorator(positions, {
-            patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
-        });
-        arrows.addTo(map);
-        return () => { map.removeLayer(arrows); };
+        try {
+            const arrows = L.polylineDecorator(positions, {
+                patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
+            });
+            arrows.addTo(map);
+            return () => { map.removeLayer(arrows); };
+        } catch (e) {
+            console.error("Error drawing arrows:", e);
+        }
     }, [map, positions]);
     return null;
 }
@@ -35,7 +38,6 @@ function RouteArrows({ positions }) {
 function RecenterMap({ position }) {
     const map = useMap();
     useEffect(() => { 
-        // Safety check: Only fly to valid positions
         if(position && position[0] && position[1]) {
             map.flyTo(position, 16, { animate: true }); 
         }
@@ -59,27 +61,30 @@ function App() {
   
   const watchId = useRef(null);
 
-  // ✅ SAFELY Extract Destination Coords
+  // ✅ FIX 1: Strict Check for Destination
   const getDestinationCoords = () => {
     if (!currentRoute?.geometry?.coordinates) return null;
     const coords = currentRoute.geometry.coordinates;
     if (!Array.isArray(coords) || coords.length === 0) return null;
     
     const lastPoint = coords[coords.length - 1]; 
-    // Ensure we have valid numbers
-    if (lastPoint && !isNaN(lastPoint[1]) && !isNaN(lastPoint[0])) {
+    // Must be valid numbers
+    if (Array.isArray(lastPoint) && lastPoint.length >= 2 && !isNaN(lastPoint[0]) && !isNaN(lastPoint[1])) {
         return [lastPoint[1], lastPoint[0]]; // [lat, lon]
     }
     return null;
   };
 
-  // ✅ SAFELY Extract Route Line
+  // ✅ FIX 2: Strict Filtering for Route Line
+  // This removes any "null" or broken points from the array before Leaflet sees them
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
       const coords = currentRoute.geometry.coordinates;
       if (!Array.isArray(coords)) return [];
       
-      return coords.map(c => [c[1], c[0]]); // Swap to [lat, lon]
+      return coords
+        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) // Throw away garbage data
+        .map(c => [c[1], c[0]]); // Swap to [lat, lon]
   };
 
   const handleUseCurrentLocation = () => {
@@ -112,7 +117,6 @@ function App() {
     setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
     
     try {
-      // Determine API URL based on environment
       const apiUrl = window.location.hostname === 'localhost' 
         ? 'http://localhost:5001/api/route' 
         : 'https://route-safety-backend.onrender.com/api/route';
@@ -176,7 +180,7 @@ function App() {
     ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance.includes("km") && parseFloat(currentRoute.summary.distance) > 15 ? 'Highway' : 'City Street') 
     : 0;
 
-  // Pre-calculate variables for rendering to ensure safety
+  // Variables for render
   const destCoords = getDestinationCoords();
   const routeLine = getRouteLine();
 
@@ -261,14 +265,14 @@ function App() {
         <MapContainer center={delhiPosition} zoom={13} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            {/* SAFE ROUTE DRAWING: Extra strict checks to prevent crashes */}
+            {/* SAFE ROUTE DRAWING */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={routeLine} />
                     
-                    {/* ✅ CRITICAL FIX: Ensure destCoords is strictly not null before rendering Marker */}
-                    {destCoords && destCoords[0] && destCoords[1] && (
+                    {/* ✅ CRITICAL FIX: Ensure destCoords is safe */}
+                    {destCoords && (
                         <Marker position={destCoords} icon={destIcon}>
                             <Popup>Destination: {endAddress}</Popup>
                         </Marker>
