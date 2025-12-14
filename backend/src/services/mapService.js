@@ -1,6 +1,12 @@
 // backend/src/services/mapService.js
 const axios = require('axios');
 
+// List of OSRM Servers to try (Priority order)
+const OSRM_SERVERS = [
+  'https://routing.openstreetmap.de/routed-car/route/v1/driving', // Server 1: German Mirror (Stable)
+  'http://router.project-osrm.org/route/v1/driving'               // Server 2: Official Demo (Backup)
+];
+
 const getCoordsFromAddress = async (address) => {
   try {
     // 1. Handle "Lat, Lon" String Input
@@ -44,38 +50,41 @@ const getCoordsFromAddress = async (address) => {
 };
 
 const getRouteFromOSRM = async (startCoords, endCoords) => {
-  try {
-    let startLon, startLat, endLon, endLat;
+  let startLon, startLat, endLon, endLat;
 
-    // Extract logic handles Array or Object inputs
-    if (Array.isArray(startCoords)) { [startLon, startLat] = startCoords; } 
-    else { startLon = startCoords.lng || startCoords.lon; startLat = startCoords.lat; }
+  // Extract logic handles Array or Object inputs
+  if (Array.isArray(startCoords)) { [startLon, startLat] = startCoords; } 
+  else { startLon = startCoords.lng || startCoords.lon; startLat = startCoords.lat; }
 
-    if (Array.isArray(endCoords)) { [endLon, endLat] = endCoords; } 
-    else { endLon = endCoords.lng || endCoords.lon; endLat = endCoords.lat; }
+  if (Array.isArray(endCoords)) { [endLon, endLat] = endCoords; } 
+  else { endLon = endCoords.lng || endCoords.lon; endLat = endCoords.lat; }
 
-    console.log(`🛣️ Fetching route alternatives...`);
+  console.log(`🛣️ Fetching route alternatives...`);
 
-    // --- FIX: Using Stable Mirror to prevent 504 Timeouts ---
-    // Old (Unstable): http://router.project-osrm.org
-    // New (Stable): https://routing.openstreetmap.de/routed-car
-    const baseUrl = 'https://routing.openstreetmap.de/routed-car/route/v1/driving';
-    
-    const url = `${baseUrl}/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson&alternatives=true`;
-    
-    const response = await axios.get(url);
+  // --- SMART FAILOVER LOGIC ---
+  // Try servers one by one until success
+  for (const baseUrl of OSRM_SERVERS) {
+    try {
+      console.log(`Attempting route fetch from: ${baseUrl}...`);
+      
+      const url = `${baseUrl}/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson&alternatives=true`;
+      
+      // Set a 6-second timeout so we don't get stuck waiting
+      const response = await axios.get(url, { timeout: 6000 });
 
-    if (!response.data.routes || response.data.routes.length === 0) {
-      throw new Error("No route found.");
+      if (response.data.routes && response.data.routes.length > 0) {
+        console.log("✅ Route fetched successfully!");
+        return response.data.routes; // SUCCESS: Return immediately
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to fetch from ${baseUrl}: ${error.message}`);
+      // If error, the loop continues to the next server automatically
     }
-
-    // Return ALL routes (Array)
-    return response.data.routes; 
-
-  } catch (error) {
-    console.error("❌ OSRM Error:", error.message);
-    throw new Error('Could not fetch route from OSRM.');
   }
+
+  // If the loop finishes and nothing worked:
+  console.error("❌ All OSRM servers failed.");
+  throw new Error('All routing servers failed. Please try again later.');
 };
 
 module.exports = { getRouteFromOSRM, getCoordsFromAddress };
