@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet-polylinedecorator';
 import './App.css';
 
-// Fix Icons
+// Fix Default Leaflet Icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
@@ -20,11 +20,16 @@ function RouteArrows({ positions }) {
     const map = useMap();
     useEffect(() => {
         if (!map || !positions || positions.length === 0) return;
-        const arrows = L.polylineDecorator(positions, {
-            patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
-        });
-        arrows.addTo(map);
-        return () => { map.removeLayer(arrows); };
+        
+        try {
+            const arrows = L.polylineDecorator(positions, {
+                patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
+            });
+            arrows.addTo(map);
+            return () => { map.removeLayer(arrows); };
+        } catch (e) {
+            console.error("Error drawing arrows:", e);
+        }
     }, [map, positions]);
     return null;
 }
@@ -32,7 +37,11 @@ function RouteArrows({ positions }) {
 // Auto-center map
 function RecenterMap({ position }) {
     const map = useMap();
-    useEffect(() => { if(position) map.flyTo(position, 16, { animate: true }); }, [position, map]);
+    useEffect(() => { 
+        if(position && position[0] && position[1]) {
+            map.flyTo(position, 16, { animate: true }); 
+        }
+    }, [position, map]);
     return null;
 }
 
@@ -52,18 +61,30 @@ function App() {
   
   const watchId = useRef(null);
 
-  // ✅ FIX: Safer coordinate extraction
+  // ✅ FIX 1: Strict Check for Destination
   const getDestinationCoords = () => {
     if (!currentRoute?.geometry?.coordinates) return null;
     const coords = currentRoute.geometry.coordinates;
-    if (coords.length === 0) return null;
+    if (!Array.isArray(coords) || coords.length === 0) return null;
+    
     const lastPoint = coords[coords.length - 1]; 
-    return [lastPoint[1], lastPoint[0]]; // [lat, lon]
+    // Must be valid numbers
+    if (Array.isArray(lastPoint) && lastPoint.length >= 2 && !isNaN(lastPoint[0]) && !isNaN(lastPoint[1])) {
+        return [lastPoint[1], lastPoint[0]]; // [lat, lon]
+    }
+    return null;
   };
 
+  // ✅ FIX 2: Strict Filtering for Route Line
+  // This removes any "null" or broken points from the array before Leaflet sees them
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
-      return currentRoute.geometry.coordinates.map(c => [c[1], c[0]]);
+      const coords = currentRoute.geometry.coordinates;
+      if (!Array.isArray(coords)) return [];
+      
+      return coords
+        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) // Throw away garbage data
+        .map(c => [c[1], c[0]]); // Swap to [lat, lon]
   };
 
   const handleUseCurrentLocation = () => {
@@ -96,7 +117,6 @@ function App() {
     setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
     
     try {
-      // Use logic to determine URL
       const apiUrl = window.location.hostname === 'localhost' 
         ? 'http://localhost:5001/api/route' 
         : 'https://route-safety-backend.onrender.com/api/route';
@@ -117,6 +137,7 @@ function App() {
         alert("No routes found.");
       }
     } catch (e) { 
+        console.error(e);
         alert("Error: " + e.message); 
     } finally { 
         setLoading(false); 
@@ -159,8 +180,9 @@ function App() {
     ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance.includes("km") && parseFloat(currentRoute.summary.distance) > 15 ? 'Highway' : 'City Street') 
     : 0;
 
-  // Calculate destination coords safely
+  // Variables for render
   const destCoords = getDestinationCoords();
+  const routeLine = getRouteLine();
 
   return (
     <div className="app-container">
@@ -243,13 +265,13 @@ function App() {
         <MapContainer center={delhiPosition} zoom={13} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            {/* SAFE ROUTE DRAWING: Only render if we have valid lines */}
-            {currentRoute && getRouteLine().length > 0 && (
+            {/* SAFE ROUTE DRAWING */}
+            {currentRoute && routeLine.length > 0 && (
                 <>
-                    <Polyline positions={getRouteLine()} color={currentRoute.safety.color} weight={6} />
-                    <RouteArrows positions={getRouteLine()} />
+                    <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
+                    <RouteArrows positions={routeLine} />
                     
-                    {/* ✅ CRITICAL FIX: Only render Marker if destCoords is not null */}
+                    {/* ✅ CRITICAL FIX: Ensure destCoords is safe */}
                     {destCoords && (
                         <Marker position={destCoords} icon={destIcon}>
                             <Popup>Destination: {endAddress}</Popup>
@@ -258,7 +280,7 @@ function App() {
                 </>
             )}
 
-            {isNavigating && currentLocation && (
+            {isNavigating && currentLocation && currentLocation[0] && currentLocation[1] && (
                 <> <Marker position={currentLocation} icon={carIcon}><Popup>You</Popup></Marker> <RecenterMap position={currentLocation} /> </>
             )}
         </MapContainer>
