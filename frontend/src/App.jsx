@@ -5,45 +5,43 @@ import L from 'leaflet';
 import 'leaflet-polylinedecorator';
 import './App.css';
 
-// --- ICONS SETUP ---
+// Fix Default Leaflet Icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Custom Icons
+// Custom Icons (Emojis)
 const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🚗</div>', className: 'custom-car-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
 const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
 
-// --- FEATURE 1: AUTO ZOOM TO ROUTE ---
-// This component automatically fits the map to show the Start and End points
+// --- FEATURE: AUTO ZOOM ---
 function FitBounds({ route }) {
     const map = useMap();
     useEffect(() => {
         if (!route || !route.geometry || !route.geometry.coordinates) return;
         try {
-            // Convert [lon, lat] to [lat, lon] for Leaflet
             const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
             if (coords.length > 0) {
                 const bounds = L.latLngBounds(coords);
-                map.fitBounds(bounds, { padding: [50, 50], animate: true });
+                map.fitBounds(bounds, { padding: [80, 80], animate: true }); // Increased padding
             }
         } catch (e) {
-            console.error("Bounds Error:", e);
+            console.error("Zoom Error:", e);
         }
     }, [route, map]);
     return null;
 }
 
-// --- HELPER COMPONENT: ARROWS ON ROUTE ---
+// --- FEATURE: ARROWS ON LINE ---
 function RouteArrows({ positions }) {
     const map = useMap();
     useEffect(() => {
         if (!map || !positions || positions.length === 0) return;
         try {
             const arrows = L.polylineDecorator(positions, {
-                patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
+                patterns: [{ offset: '50px', repeat: '150px', symbol: L.Symbol.arrowHead({ pixelSize: 12, polygon: false, headAngle: 40, pathOptions: { stroke: true, color: 'white', weight: 3, opacity: 1 } }) }]
             });
             arrows.addTo(map);
             return () => { map.removeLayer(arrows); };
@@ -52,13 +50,10 @@ function RouteArrows({ positions }) {
     return null;
 }
 
-// --- HELPER COMPONENT: RECENTER ON CAR ---
 function RecenterMap({ position }) {
     const map = useMap();
     useEffect(() => { 
-        if(position && position[0] && position[1]) {
-            map.flyTo(position, 16, { animate: true }); 
-        }
+        if(position && position[0] && position[1]) map.flyTo(position, 16); 
     }, [position, map]);
     return null;
 }
@@ -79,28 +74,24 @@ function App() {
   
   const watchId = useRef(null);
 
-  // --- SAFE COORDINATE EXTRACTORS ---
+  // Extract Coordinates Safely
   const getCoord = (index) => {
     if (!currentRoute?.geometry?.coordinates) return null;
     const coords = currentRoute.geometry.coordinates;
     const point = index === -1 ? coords[coords.length - 1] : coords[index];
-    
-    // Safety check for valid numbers
-    if (Array.isArray(point) && point.length >= 2 && !isNaN(point[0]) && !isNaN(point[1])) {
-        return [point[1], point[0]]; // [lat, lon]
-    }
+    if (Array.isArray(point) && point.length >= 2) return [point[1], point[0]];
     return null;
   };
 
-  const getStartCoords = () => getCoord(0); // First point
-  const getDestCoords = () => getCoord(-1); // Last point
+  const startCoords = getCoord(0);
+  const destCoords = getCoord(-1);
 
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
-      return currentRoute.geometry.coordinates
-        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]))
-        .map(c => [c[1], c[0]]);
+      return currentRoute.geometry.coordinates.map(c => [c[1], c[0]]);
   };
+
+  const routeLine = getRouteLine();
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
@@ -121,7 +112,6 @@ function App() {
   const handleFindRoute = async () => {
     if (!startAddress || !endAddress) return alert('Enter addresses.');
     setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
-    
     try {
       const apiUrl = window.location.hostname === 'localhost' 
         ? 'http://localhost:5001/api/route' 
@@ -133,7 +123,6 @@ function App() {
         body: JSON.stringify({ start: startAddress, end: endAddress }),
       });
       const data = await res.json();
-      
       if (data.routes) {
         setAllRoutes(data.routes);
         setCurrentRoute(data.routes.moderate);
@@ -159,11 +148,6 @@ function App() {
 
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
   const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
-
-  // Helper vars
-  const startCoords = getStartCoords();
-  const destCoords = getDestCoords();
-  const routeLine = getRouteLine();
 
   return (
     <div className="app-container">
@@ -202,10 +186,7 @@ function App() {
                         ⏳ {currentRoute.summary.duration} | 📏 {currentRoute.summary.distance}
                     </div>
                     <div style={{ fontSize: '12px', color: '#333', fontWeight: '500' }}>
-                        🌡️ Temp: {weather.temperature}°C 
-                    </div>
-                    <div style={{ fontSize: '12px', fontWeight: 'bold', color: getAqiColor(weather.aqi) }}>
-                        💨 AQI: {weather.aqi} - {weather.aqiText}
+                        🌡️ {weather.temperature}°C  | 💨 AQI: {weather.aqi}
                     </div>
                 </div>
             </div>
@@ -221,30 +202,40 @@ function App() {
             </div>
         )}
 
-        <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        {/* MAP CONTAINER - Added key to force refresh */}
+        <MapContainer 
+            key={currentRoute ? currentRoute.summary.distance : "default"} 
+            center={defaultCenter} 
+            zoom={13} 
+            zoomControl={false}
+        >
+            {/* UPDATED TILE LAYER (Better looking map) */}
+            <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            />
             
-            {/* FEATURE 1: AUTO ZOOM TO ROUTE */}
+            {/* 1. AUTO ZOOM */}
             {currentRoute && <FitBounds route={currentRoute} />}
 
-            {/* ROUTE LINE & ARROWS */}
+            {/* 2. ROUTE LINE */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={routeLine} />
-                    
-                    {/* FEATURE 2: START & END MARKERS */}
-                    {startCoords && (
-                        <Marker position={startCoords} icon={startIcon}>
-                            <Popup>Start: {startAddress}</Popup>
-                        </Marker>
-                    )}
-                    {destCoords && (
-                        <Marker position={destCoords} icon={destIcon}>
-                            <Popup>End: {endAddress}</Popup>
-                        </Marker>
-                    )}
                 </>
+            )}
+
+            {/* 3. START & END MARKERS (Always visible if coords exist) */}
+            {startCoords && (
+                <Marker position={startCoords} icon={startIcon}>
+                    <Popup>Start: {startAddress}</Popup>
+                </Marker>
+            )}
+            {destCoords && (
+                <Marker position={destCoords} icon={destIcon}>
+                    <Popup>End: {endAddress}</Popup>
+                </Marker>
             )}
 
             {isNavigating && currentLocation && (
@@ -253,7 +244,7 @@ function App() {
         </MapContainer>
       </div>
 
-      {/* BOTTOM BUTTONS */}
+      {/* BOTTOM BAR */}
       <div className="bottom-bar">
         {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
