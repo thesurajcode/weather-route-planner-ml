@@ -1,4 +1,5 @@
-# requirements.txt
+# requirements.txt - Only include this content
+
 Flask==2.3.3
 gunicorn==20.1.0
 xgboost==1.7.6
@@ -7,4 +8,4 @@ pandas==1.5.3
 numpy==1.24.3
 scipy==1.10.1
 joblib==1.2.0
-Flask-Cors==4.0.0   <--- ADD THIS LINE
+Flask-Cors==4.0.0
