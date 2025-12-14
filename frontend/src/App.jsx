@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet-polylinedecorator';
 import './App.css';
 
-// Fix Default Leaflet Icons
+// --- ICONS SETUP ---
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
@@ -13,28 +13,45 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom Icons
 const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🚗</div>', className: 'custom-car-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
+const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
 
-// --- COMPONENT: DRAWS ARROWS ON ROUTE ---
+// --- HELPER COMPONENT: ZOOM TO ROUTE ---
+function FitBounds({ route }) {
+    const map = useMap();
+    useEffect(() => {
+        if (!route || !route.geometry || !route.geometry.coordinates) return;
+        try {
+            // Convert [lon, lat] to [lat, lon] for Leaflet
+            const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+            if (coords.length > 0) {
+                const bounds = L.latLngBounds(coords);
+                map.fitBounds(bounds, { padding: [50, 50], animate: true });
+            }
+        } catch (e) {
+            console.error("Bounds Error:", e);
+        }
+    }, [route, map]);
+    return null;
+}
+
+// --- HELPER COMPONENT: ARROWS ON ROUTE ---
 function RouteArrows({ positions }) {
     const map = useMap();
     useEffect(() => {
         if (!map || !positions || positions.length === 0) return;
-        
         try {
             const arrows = L.polylineDecorator(positions, {
                 patterns: [{ offset: '100px', repeat: '200px', symbol: L.Symbol.arrowHead({ pixelSize: 10, polygon: false, headAngle: 50, pathOptions: { stroke: true, color: 'white', weight: 2.5, opacity: 1 } }) }]
             });
             arrows.addTo(map);
             return () => { map.removeLayer(arrows); };
-        } catch (e) {
-            console.error("Error drawing arrows:", e);
-        }
+        } catch (e) {}
     }, [map, positions]);
     return null;
 }
 
-// Auto-center map
+// --- HELPER COMPONENT: RECENTER ON CAR ---
 function RecenterMap({ position }) {
     const map = useMap();
     useEffect(() => { 
@@ -46,7 +63,7 @@ function RecenterMap({ position }) {
 }
 
 function App() {
-  const delhiPosition = [28.6139, 77.2090];
+  const defaultCenter = [28.6139, 77.2090]; // Delhi
   const [startAddress, setStartAddress] = useState('');
   const [endAddress, setEndAddress] = useState('');
   const [allRoutes, setAllRoutes] = useState(null);
@@ -61,30 +78,27 @@ function App() {
   
   const watchId = useRef(null);
 
-  // ✅ FIX 1: Strict Check for Destination
-  const getDestinationCoords = () => {
+  // --- SAFE COORDINATE EXTRACTORS ---
+  const getCoord = (index) => {
     if (!currentRoute?.geometry?.coordinates) return null;
     const coords = currentRoute.geometry.coordinates;
-    if (!Array.isArray(coords) || coords.length === 0) return null;
+    const point = index === -1 ? coords[coords.length - 1] : coords[index];
     
-    const lastPoint = coords[coords.length - 1]; 
-    // Must be valid numbers
-    if (Array.isArray(lastPoint) && lastPoint.length >= 2 && !isNaN(lastPoint[0]) && !isNaN(lastPoint[1])) {
-        return [lastPoint[1], lastPoint[0]]; // [lat, lon]
+    // Safety check for valid numbers
+    if (Array.isArray(point) && point.length >= 2 && !isNaN(point[0]) && !isNaN(point[1])) {
+        return [point[1], point[0]]; // [lat, lon]
     }
     return null;
   };
 
-  // ✅ FIX 2: Strict Filtering for Route Line
-  // This removes any "null" or broken points from the array before Leaflet sees them
+  const getStartCoords = () => getCoord(0); // First point
+  const getDestCoords = () => getCoord(-1); // Last point
+
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
-      const coords = currentRoute.geometry.coordinates;
-      if (!Array.isArray(coords)) return [];
-      
-      return coords
-        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1])) // Throw away garbage data
-        .map(c => [c[1], c[0]]); // Swap to [lat, lon]
+      return currentRoute.geometry.coordinates
+        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]))
+        .map(c => [c[1], c[0]]);
   };
 
   const handleUseCurrentLocation = () => {
@@ -97,19 +111,10 @@ function App() {
           const data = await res.json();
           if (data.features.length > 0) {
             const p = data.features[0].properties;
-            const addressName = [p.name, p.street, p.city].filter(Boolean).join(", ");
-            setStartAddress(addressName);
-          } else {
-            setStartAddress(`${latitude}, ${longitude}`);
-          }
-        } catch { 
-            setStartAddress(`${latitude}, ${longitude}`); 
-        }
-    }, (err) => {
-        console.error(err);
-        setStartAddress(""); 
-        alert("Could not get location.");
-    }, { enableHighAccuracy: true });
+            setStartAddress([p.name, p.street, p.city].filter(Boolean).join(", "));
+          } else setStartAddress(`${latitude}, ${longitude}`);
+        } catch { setStartAddress(`${latitude}, ${longitude}`); }
+    }, () => setStartAddress(""), { enableHighAccuracy: true });
   };
 
   const handleFindRoute = async () => {
@@ -133,15 +138,9 @@ function App() {
         setCurrentRoute(data.routes.moderate);
         setWeather(data.weather);
         setRecommendation(data.recommendation);
-      } else {
-        alert("No routes found.");
-      }
-    } catch (e) { 
-        console.error(e);
-        alert("Error: " + e.message); 
-    } finally { 
-        setLoading(false); 
-    }
+      } else alert("No routes found.");
+    } catch (e) { alert("Error: " + e.message); } 
+    finally { setLoading(false); }
   };
 
   const toggleNavigation = () => {
@@ -157,36 +156,17 @@ function App() {
     }
   };
 
-  const confirmHazard = (type) => {
-    if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
-    const [lat, lon] = currentLocation;
-    const time = new Date().toLocaleTimeString();
-    alert(`✅ REPORT SUBMITTED!\n\nType: ${type}\n📍 Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🕒 Time: ${time}`);
-    setShowReportMenu(false);
-  };
-
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
   const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
 
-  const calculateSafeSpeed = (riskScore, roadType = 'City Street') => {
-    let baseSpeed = roadType === 'Highway' ? 80 : 50; 
-    const reductionFactor = (riskScore / 10) * 0.05; 
-    let safeSpeed = baseSpeed * (1 - reductionFactor);
-    if (riskScore > 75) safeSpeed = Math.min(safeSpeed, 30); 
-    return Math.round(safeSpeed);
-  };
-
-  const currentSafeSpeed = currentRoute 
-    ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance.includes("km") && parseFloat(currentRoute.summary.distance) > 15 ? 'Highway' : 'City Street') 
-    : 0;
-
-  // Variables for render
-  const destCoords = getDestinationCoords();
+  // Helper vars
+  const startCoords = getStartCoords();
+  const destCoords = getDestCoords();
   const routeLine = getRouteLine();
 
   return (
     <div className="app-container">
-      {/* 1. TOP BAR */}
+      {/* TOP BAR */}
       <div className="top-bar">
         <div className="input-row">
             <input type="text" value={startAddress} onChange={(e) => setStartAddress(e.target.value)} placeholder="Start Location" />
@@ -197,7 +177,7 @@ function App() {
         </div>
       </div>
 
-      {/* 2. MIDDLE MAP AREA */}
+      {/* MAP AREA */}
       <div className="map-wrapper">
         {recommendation && (
             <div style={{
@@ -230,63 +210,49 @@ function App() {
             </div>
         )}
 
-        {isNavigating && currentRoute && (
-            <div className="speed-limit-sign" title="AI Recommended Safe Speed">
-                <div style={{ fontSize: '10px', textTransform: 'uppercase' }}>Safe</div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', lineHeight: '1' }}>{currentSafeSpeed}</div>
-                <div style={{ fontSize: '10px' }}>km/h</div>
-            </div>
-        )}
-
-        <button className="legend-btn" title="Help" onClick={() => setShowLegend(!showLegend)} style={{ background: showLegend ? '#eee' : 'white' }}>?</button>
+        <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
         {showLegend && (
             <div className="legend-box" onClick={() => setShowLegend(false)}>
                  <h4 style={{margin:'0 0 8px 0'}}>Map Guide</h4>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> Safe (0-30)</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> Moderate (31-70)</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> High Risk (71+)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> Safe</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> Moderate</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> High Risk</div>
             </div>
         )}
 
-        {isNavigating && (
-            <>
-                <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
-                {showReportMenu && (
-                    <div className="report-menu">
-                        <div style={{ fontWeight: 'bold', marginBottom: '10px', textAlign:'center' }}>Report Hazard</div>
-                        <button className="menu-item" onClick={() => confirmHazard('Pothole')}>🕳️ Pothole</button>
-                        <button className="menu-item" onClick={() => confirmHazard('Accident')}>💥 Accident</button>
-                        <button className="menu-cancel" onClick={() => setShowReportMenu(false)}>Cancel</button>
-                    </div>
-                )}
-            </>
-        )}
-
-        <MapContainer center={delhiPosition} zoom={13} zoomControl={false}>
+        <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            {/* SAFE ROUTE DRAWING */}
+            {/* 1. AUTO ZOOM TO ROUTE */}
+            {currentRoute && <FitBounds route={currentRoute} />}
+
+            {/* 2. ROUTE LINE & ARROWS */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={routeLine} />
                     
-                    {/* ✅ CRITICAL FIX: Ensure destCoords is safe */}
+                    {/* 3. MARKERS */}
+                    {startCoords && (
+                        <Marker position={startCoords} icon={startIcon}>
+                            <Popup>Start: {startAddress}</Popup>
+                        </Marker>
+                    )}
                     {destCoords && (
                         <Marker position={destCoords} icon={destIcon}>
-                            <Popup>Destination: {endAddress}</Popup>
+                            <Popup>End: {endAddress}</Popup>
                         </Marker>
                     )}
                 </>
             )}
 
-            {isNavigating && currentLocation && currentLocation[0] && currentLocation[1] && (
+            {isNavigating && currentLocation && (
                 <> <Marker position={currentLocation} icon={carIcon}><Popup>You</Popup></Marker> <RecenterMap position={currentLocation} /> </>
             )}
         </MapContainer>
       </div>
 
-      {/* 3. BOTTOM BUTTONS */}
+      {/* BOTTOM BUTTONS */}
       <div className="bottom-bar">
         {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
