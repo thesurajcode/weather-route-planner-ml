@@ -1,78 +1,55 @@
-// backend/src/services/riskAnalysisService.js
+// backend/src/services/weatherService.js
+const axios = require('axios');
 
-// This function runs locally, replacing the external Python ML service.
-// It guarantees NO 502 Errors.
-
-const getRiskScore = async (weatherData, routeData) => {
-  console.log("🤖 AI Analyzing Risk (Local Mode)...");
-  
-  // 1. Start with a baseline score (0 = Safe, 100 = Dangerous)
-  let score = 10; 
-  let factors = [];
-  let message = "Safe driving conditions.";
-  let color = "#00cc66"; // Green
-
+const getWeatherForCoords = async (lat, lon) => {
   try {
-    // 2. Analyze Weather
-    if (weatherData) {
-        if (weatherData.condition.includes("Rain")) {
-            score += 35;
-            factors.push("Wet Roads");
-            message = "Caution: Slippery roads detected.";
-        }
-        if (weatherData.condition.includes("Storm")) {
-            score += 55;
-            factors.push("Stormy Conditions");
-            message = "Danger: High winds and rain.";
-        }
-        if (weatherData.condition.includes("Cloudy") && weatherData.windSpeed > 15) {
-            score += 15;
-            factors.push("Windy");
-        }
-        if (weatherData.aqi > 3) {
-            score += 20;
-            factors.push("Poor Visibility (Smog)");
-        }
-    }
+    console.log(`Getting weather for ${lat}, ${lon} from Open-Meteo...`);
+    
+    // FREE API: Open-Meteo (No API Key needed)
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
+    
+    const response = await axios.get(url);
+    const data = response.data;
+    const temp = data.current_weather.temperature;
+    const code = data.current_weather.weathercode;
 
-    // 3. Analyze Route Distance
-    // Longer routes increase fatigue risk
-    const distanceKm = (routeData && routeData.summary && routeData.summary.distance) 
-        ? routeData.summary.distance / 1000 
-        : 0;
-        
-    if (distanceKm > 50) {
-        score += 10;
-        factors.push("Long Distance");
-    }
+    // Map numeric codes to text
+    let condition = "Clear";
+    if (code > 2) condition = "Cloudy";
+    if (code >= 51) condition = "Rainy";
+    if (code >= 80) condition = "Stormy";
 
-    // 4. Time of Day Analysis (Night driving is riskier)
-    const hour = new Date().getHours();
-    if (hour > 22 || hour < 5) {
-        score += 25;
-        factors.push("Night Driving");
-        message = "Reduced visibility due to night time.";
-    }
-
-    // 5. Cap the score at 100
-    if (score > 100) score = 100;
-
-    // 6. Determine Final Status Color
-    if (score > 40) color = "#ff9933"; // Orange (Moderate)
-    if (score > 75) color = "#ff4d4d"; // Red (High Risk)
+    // Simulate AQI (Since Open-Meteo AQI is a separate complex call)
+    const aqi = Math.floor(Math.random() * 3) + 1; 
 
     return {
-        score: score,
-        color: color,
-        message: message,
-        factors: factors
+      condition: condition,
+      description: condition,
+      temperature: temp,
+      windSpeed: data.current_weather.windspeed,
+      aqi: aqi,
+      aqiText: aqi === 1 ? "Good" : (aqi === 2 ? "Moderate" : "Poor"),
+      future: {
+        condition: condition, 
+        temp: temp, 
+        time: "Later"
+      }
     };
 
   } catch (error) {
-    console.error("Risk Analysis Error:", error);
-    // Default safe fallback
-    return { score: 10, color: "#00cc66", message: "Safe", factors: [] };
+    console.error("❌ Weather API Error:", error.message);
+    // Return safe fallback data so the app doesn't crash
+    return {
+      condition: "Sunny",
+      description: "Clear Sky",
+      temperature: 25,
+      windSpeed: 5,
+      aqi: 1,
+      aqiText: "Good",
+      future: { condition: "Sunny", temp: 25, time: "Later" }
+    };
   }
 };
 
-module.exports = { getRiskScore };
+// ✅ CRITICAL: Export inside curly braces to match routes.js
+module.exports = { getWeatherForCoords };
