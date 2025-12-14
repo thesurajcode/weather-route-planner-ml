@@ -16,7 +16,8 @@ const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;"
 const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
 
-// --- HELPER COMPONENT: ZOOM TO ROUTE ---
+// --- FEATURE 1: AUTO ZOOM TO ROUTE ---
+// This component automatically fits the map to show the Start and End points
 function FitBounds({ route }) {
     const map = useMap();
     useEffect(() => {
@@ -223,16 +224,16 @@ function App() {
         <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            {/* 1. AUTO ZOOM TO ROUTE */}
+            {/* FEATURE 1: AUTO ZOOM TO ROUTE */}
             {currentRoute && <FitBounds route={currentRoute} />}
 
-            {/* 2. ROUTE LINE & ARROWS */}
+            {/* ROUTE LINE & ARROWS */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={routeLine} />
                     
-                    {/* 3. MARKERS */}
+                    {/* FEATURE 2: START & END MARKERS */}
                     {startCoords && (
                         <Marker position={startCoords} icon={startIcon}>
                             <Popup>Start: {startAddress}</Popup>
