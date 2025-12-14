@@ -1,11 +1,10 @@
-# requirements.txt - Only include this content
-
-Flask==2.3.3
-gunicorn==20.1.0
-xgboost==1.7.6
-scikit-learn==1.2.2
-pandas==1.5.3
-numpy==1.24.3
-scipy==1.10.1
-joblib==1.2.0
+# requirements.txt - Modern versions for Py3.10 and Py3.12
+Flask==3.0.0
+gunicorn==21.2.0
+xgboost==2.0.3
+scikit-learn==1.3.2
+pandas==2.1.4
+numpy==1.26.4
+scipy==1.11.4
+joblib==1.3.2
 Flask-Cors==4.0.0
