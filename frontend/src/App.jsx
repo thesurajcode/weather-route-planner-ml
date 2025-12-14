@@ -11,21 +11,28 @@ import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Custom Icons (Emojis)
+// Custom Icons
 const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🚗</div>', className: 'custom-car-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
 const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
 
-// --- FEATURE: AUTO ZOOM ---
+// --- FEATURE: AUTO ZOOM TO ROUTE ---
 function FitBounds({ route }) {
     const map = useMap();
     useEffect(() => {
         if (!route || !route.geometry || !route.geometry.coordinates) return;
         try {
-            const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-            if (coords.length > 0) {
-                const bounds = L.latLngBounds(coords);
-                map.fitBounds(bounds, { padding: [80, 80], animate: true }); // Increased padding
+            // Flatten coordinates just in case they are nested (MultiLineString)
+            const rawCoords = route.geometry.coordinates.flat(Infinity);
+            const latLngs = [];
+            for(let i=0; i<rawCoords.length; i+=2){
+                // GeoJSON is [lon, lat], Leaflet needs [lat, lon]
+                latLngs.push([rawCoords[i+1], rawCoords[i]]);
+            }
+
+            if (latLngs.length > 0) {
+                const bounds = L.latLngBounds(latLngs);
+                map.fitBounds(bounds, { padding: [80, 80], animate: true });
             }
         } catch (e) {
             console.error("Zoom Error:", e);
@@ -74,24 +81,35 @@ function App() {
   
   const watchId = useRef(null);
 
-  // Extract Coordinates Safely
-  const getCoord = (index) => {
-    if (!currentRoute?.geometry?.coordinates) return null;
-    const coords = currentRoute.geometry.coordinates;
-    const point = index === -1 ? coords[coords.length - 1] : coords[index];
-    if (Array.isArray(point) && point.length >= 2) return [point[1], point[0]];
-    return null;
-  };
-
-  const startCoords = getCoord(0);
-  const destCoords = getCoord(-1);
-
+  // --- 1. ROBUST ROUTE PARSER (Fixes invisible routes) ---
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
-      return currentRoute.geometry.coordinates.map(c => [c[1], c[0]]);
+      
+      let rawCoords = currentRoute.geometry.coordinates;
+
+      // Handle nested arrays (MultiLineString) which Geoapify sometimes returns
+      // If the first element is an Array of numbers, it's a Point [lon, lat] -> Standard
+      // If the first element is an Array of Arrays, it's a Segment [[lon, lat], ...] -> Nested
+      if (Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0])) {
+          rawCoords = rawCoords.flat();
+      }
+
+      const validPoints = rawCoords
+        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]))
+        .map(c => [c[1], c[0]]); // Swap [lon, lat] to [lat, lon]
+
+      console.log(`📍 Drawing Route: ${validPoints.length} points found.`);
+      return validPoints;
   };
 
   const routeLine = getRouteLine();
+
+  // --- 2. SAFE MARKER EXTRACTOR ---
+  const getStartCoords = () => routeLine.length > 0 ? routeLine[0] : null;
+  const getDestCoords = () => routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
+
+  const startCoords = getStartCoords();
+  const destCoords = getDestCoords();
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
@@ -123,6 +141,9 @@ function App() {
         body: JSON.stringify({ start: startAddress, end: endAddress }),
       });
       const data = await res.json();
+      
+      console.log("📡 API Response:", data); // Debug Log
+
       if (data.routes) {
         setAllRoutes(data.routes);
         setCurrentRoute(data.routes.moderate);
@@ -202,23 +223,17 @@ function App() {
             </div>
         )}
 
-        {/* MAP CONTAINER - Added key to force refresh */}
-        <MapContainer 
-            key={currentRoute ? currentRoute.summary.distance : "default"} 
-            center={defaultCenter} 
-            zoom={13} 
-            zoomControl={false}
-        >
-            {/* UPDATED TILE LAYER (Better looking map) */}
+        {/* Removed Key Prop to let Leaflet handle updates gracefully */}
+        <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
             <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
             />
             
-            {/* 1. AUTO ZOOM */}
+            {/* AUTO ZOOM */}
             {currentRoute && <FitBounds route={currentRoute} />}
 
-            {/* 2. ROUTE LINE */}
+            {/* ROUTE LINE & ARROWS */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
@@ -226,7 +241,7 @@ function App() {
                 </>
             )}
 
-            {/* 3. START & END MARKERS (Always visible if coords exist) */}
+            {/* START & END MARKERS */}
             {startCoords && (
                 <Marker position={startCoords} icon={startIcon}>
                     <Popup>Start: {startAddress}</Popup>
