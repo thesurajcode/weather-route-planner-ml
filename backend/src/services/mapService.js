@@ -3,7 +3,7 @@ const axios = require('axios');
 
 // List of OSRM Servers to try (Priority order)
 const OSRM_SERVERS = [
-  'https://routing.openstreetmap.de/routed-car/route/v1/driving', // Server 1: German Mirror (Stable)
+  'https://routing.openstreetmap.de/routed-car/route/v1/driving', // Server 1: German Mirror (Fast & Stable)
   'http://router.project-osrm.org/route/v1/driving'               // Server 2: Official Demo (Backup)
 ];
 
@@ -67,6 +67,7 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
     try {
       console.log(`Attempting route fetch from: ${baseUrl}...`);
       
+      // Request multiple routes (alternatives=true)
       const url = `${baseUrl}/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson&alternatives=true`;
       
       // Set a 6-second timeout so we don't get stuck waiting
@@ -78,11 +79,11 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
       }
     } catch (error) {
       console.warn(`⚠️ Failed to fetch from ${baseUrl}: ${error.message}`);
-      // If error, the loop continues to the next server automatically
+      // The loop continues to the next server automatically
     }
   }
 
-  // If the loop finishes and nothing worked:
+  // If the loop finishes and NOTHING worked:
   console.error("❌ All OSRM servers failed.");
   throw new Error('All routing servers failed. Please try again later.');
 };
