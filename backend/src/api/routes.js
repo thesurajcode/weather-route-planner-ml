@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 
-// ✅ CRITICAL: Use curly braces { } for ALL imports
+// Correct Imports
 const { getRouteFromOSRM, getCoordsFromAddress } = require('../services/mapService');
 const { getWeatherForCoords } = require('../services/weatherService'); 
 const { getRiskScore } = require('../services/riskAnalysisService');
@@ -12,7 +12,7 @@ router.post('/route', async (req, res) => {
     const { start, end } = req.body;
     if (!start || !end) return res.status(400).json({ error: 'Start and end required.' });
     
-    // 1. Get Coordinates
+    // 1. Get Coordinates [lon, lat]
     const startCoords = await getCoordsFromAddress(start);
     const endCoords = await getCoordsFromAddress(end);
     
@@ -20,12 +20,13 @@ router.post('/route', async (req, res) => {
     const routes = await getRouteFromOSRM(startCoords, endCoords);
     const bestRoute = routes[0]; 
 
-    // 3. Get Weather (Middle of route)
-    const midIndex = Math.floor(bestRoute.geometry.coordinates.length / 2);
-    // GeoJSON is [lon, lat], but weather needs [lat, lon]
-    const [midLon, midLat] = bestRoute.geometry.coordinates[midIndex];
+    // 3. Get Weather (Simple Midpoint Math)
+    // calculating the average between Start and End is safer/faster
+    const midLat = (startCoords[1] + endCoords[1]) / 2;
+    const midLon = (startCoords[0] + endCoords[0]) / 2;
 
-    // THIS IS THE LINE THAT WAS FAILING. It will work now.
+    console.log(`📍 Weather Midpoint: ${midLat.toFixed(4)}, ${midLon.toFixed(4)}`);
+
     const weatherInfo = await getWeatherForCoords(midLat, midLon);
 
     // 4. Analyze Risks
