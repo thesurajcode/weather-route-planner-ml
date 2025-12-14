@@ -3,9 +3,8 @@ const express = require('express');
 const router = express.Router();
 
 // 1. Correct Imports (Notice the curly braces {})
-// This was likely missing before, causing the "not a function" error
 const { getRouteFromOSRM, getCoordsFromAddress } = require('../services/mapService');
-const { getWeatherForCoords } = require('../services/weatherService');
+const { getWeatherForCoords } = require('../services/weatherService'); // <--- Fixed line
 const { getRiskScore } = require('../services/riskAnalysisService');
 
 router.post('/route', async (req, res) => {
@@ -19,19 +18,15 @@ router.post('/route', async (req, res) => {
     
     // 2. Get Route (Geoapify)
     const routes = await getRouteFromOSRM(startCoords, endCoords);
-    
-    // 3. Get Weather (Open-Meteo)
-    // We assume the first route is the primary one
     const bestRoute = routes[0];
     
+    // 3. Get Weather (Open-Meteo)
     // Calculate middle point for approximate weather
     const midIndex = Math.floor(bestRoute.geometry.coordinates.length / 2);
     const midPoint = bestRoute.geometry.coordinates[midIndex]; 
-    // GeoJSON is [lon, lat], but weather needs [lat, lon]
     const midLat = midPoint[1];
     const midLon = midPoint[0];
 
-    // THIS is the line that was failing before
     const weatherInfo = await getWeatherForCoords(midLat, midLon);
 
     // 4. Analyze Risks (Local Logic)
@@ -96,7 +91,6 @@ router.post('/route', async (req, res) => {
     let recommendation = null;
     if (weatherInfo && analyzedRoutes.length > 0) {
         const riskNow = analyzedRoutes[0].safety.score;
-        // Simple heuristic: If weather is bad, assume waiting helps
         const shouldWait = weatherInfo.condition.includes("Rain") || riskNow > 60;
 
         if (shouldWait) {
