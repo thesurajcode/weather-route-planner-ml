@@ -2,17 +2,18 @@
 const express = require('express');
 const router = express.Router();
 
-// 1. Correct Imports for our Local Services
+// 1. Correct Imports (Notice the curly braces {})
+// This was likely missing before, causing the "not a function" error
 const { getRouteFromOSRM, getCoordsFromAddress } = require('../services/mapService');
 const { getWeatherForCoords } = require('../services/weatherService');
-const { getRiskScore } = require('../services/riskAnalysisService'); // Local ML logic
+const { getRiskScore } = require('../services/riskAnalysisService');
 
 router.post('/route', async (req, res) => {
   try {
     let { start, end } = req.body;
     if (!start || !end) return res.status(400).json({ error: 'Start and end points required.' });
     
-    // 1. Get Coordinates (Geoapify/Photon)
+    // 1. Get Coordinates
     let startCoords = await getCoordsFromAddress(start);
     let endCoords = await getCoordsFromAddress(end);
     
@@ -20,21 +21,29 @@ router.post('/route', async (req, res) => {
     const routes = await getRouteFromOSRM(startCoords, endCoords);
     
     // 3. Get Weather (Open-Meteo)
-    // We get weather for the middle of the first route to be approximate
-    const midIndex = Math.floor(routes[0].geometry.coordinates.length / 2);
-    const [lon, lat] = routes[0].geometry.coordinates[midIndex];
-    const weatherInfo = await getWeatherForCoords(lat, lon);
+    // We assume the first route is the primary one
+    const bestRoute = routes[0];
+    
+    // Calculate middle point for approximate weather
+    const midIndex = Math.floor(bestRoute.geometry.coordinates.length / 2);
+    const midPoint = bestRoute.geometry.coordinates[midIndex]; 
+    // GeoJSON is [lon, lat], but weather needs [lat, lon]
+    const midLat = midPoint[1];
+    const midLon = midPoint[0];
 
-    // 4. Analyze Risks using Local Logic (No Python Server needed)
+    // THIS is the line that was failing before
+    const weatherInfo = await getWeatherForCoords(midLat, midLon);
+
+    // 4. Analyze Risks (Local Logic)
     let analyzedRoutes = [];
     
     for (let i = 0; i < routes.length; i++) {
         const route = routes[i];
         
-        // Call our Local Risk Service
+        // Call Local Risk Service
         const safetyAnalysis = await getRiskScore(weatherInfo, route);
 
-        // Add slight variance for UI demo purposes if multiple routes exist
+        // Add slight variance for UI demo
         if (i === 1) safetyAnalysis.score = Math.max(0, safetyAnalysis.score - 10);
         if (i === 2) safetyAnalysis.score = Math.min(100, safetyAnalysis.score + 15);
 
@@ -54,14 +63,13 @@ router.post('/route', async (req, res) => {
         });
     }
 
-    // 5. HYBRID LOGIC: If only 1 route found, create simulated alternatives
-    // This ensures your UI buttons (Safe/Fast/Best) always have data to show
+    // 5. Hybrid Logic: Ensure buttons always have data
     if (analyzedRoutes.length < 2) {
         const base = analyzedRoutes[0];
         const baseDist = parseFloat(base.summary.distance);
         const baseDur = parseInt(base.summary.duration);
 
-        // Create "Safest" Option (Slower but Safer)
+        // Create "Safest" Option
         analyzedRoutes.push({
             ...base, 
             id: 1,
@@ -72,7 +80,7 @@ router.post('/route', async (req, res) => {
             safety: { score: 20, message: "AI: Low Risk (Safe Route)", color: "#00cc66", factors: ["Low Traffic"] }
         });
 
-        // Create "Fastest" Option (Faster but Riskier)
+        // Create "Fastest" Option
         analyzedRoutes.push({
             ...base, 
             id: 2,
@@ -84,20 +92,17 @@ router.post('/route', async (req, res) => {
         });
     }
 
-    // 6. Smart Recommendation Logic (Compare Now vs. Later)
+    // 6. Recommendation Logic
     let recommendation = null;
     if (weatherInfo && analyzedRoutes.length > 0) {
-        const bestRoute = analyzedRoutes[0];
-        const riskNow = bestRoute.safety.score;
-        
-        // Simple heuristic: If weather is bad now, assume it might clear up later
-        // (In a real app, we would call the weather API for +3 hours specifically)
-        const riskLater = weatherInfo.condition.includes("Rain") ? riskNow - 20 : riskNow + 5;
+        const riskNow = analyzedRoutes[0].safety.score;
+        // Simple heuristic: If weather is bad, assume waiting helps
+        const shouldWait = weatherInfo.condition.includes("Rain") || riskNow > 60;
 
-        if (riskNow > 50 && riskLater < riskNow) {
+        if (shouldWait) {
              recommendation = {
                 shouldWait: true,
-                text: `💡 Smart Tip: Wait a few hours. Risk drops as weather improves.`,
+                text: `💡 Smart Tip: Consider waiting. Heavy traffic/weather detected.`,
                 color: '#fff3cd',
                 borderColor: '#ffeeba'
             };
@@ -115,11 +120,10 @@ router.post('/route', async (req, res) => {
     const sortedBySafety = [...analyzedRoutes].sort((a, b) => a.safety.score - b.safety.score);
     const sortedByTime = [...analyzedRoutes].sort((a, b) => parseFloat(a.summary.duration) - parseFloat(b.summary.duration));
 
-    // Response
     res.json({
         routes: {
             safest: sortedBySafety[0],
-            moderate: analyzedRoutes[0], // Default to the main route found
+            moderate: analyzedRoutes[0], 
             fastest: sortedByTime[0],
             count: 3 
         },
