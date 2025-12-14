@@ -49,12 +49,14 @@ function App() {
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [recommendation, setRecommendation] = useState(null);
+  
   const watchId = useRef(null);
 
-  // Safe Access to Coordinates
+  // ✅ FIX: Safer coordinate extraction
   const getDestinationCoords = () => {
     if (!currentRoute?.geometry?.coordinates) return null;
     const coords = currentRoute.geometry.coordinates;
+    if (coords.length === 0) return null;
     const lastPoint = coords[coords.length - 1]; 
     return [lastPoint[1], lastPoint[0]]; // [lat, lon]
   };
@@ -66,10 +68,7 @@ function App() {
 
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
-    
-    // Set placeholder but DISABLE 'Get Route' button logically if needed
     setStartAddress("Locating..."); 
-    
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude } = pos.coords;
         try {
@@ -87,21 +86,20 @@ function App() {
         }
     }, (err) => {
         console.error(err);
-        setStartAddress(""); // Clear on error so user can type
+        setStartAddress(""); 
         alert("Could not get location.");
     }, { enableHighAccuracy: true });
   };
 
   const handleFindRoute = async () => {
     if (!startAddress || !endAddress) return alert('Enter addresses.');
-    if (startAddress === "Locating...") return alert("Please wait for location to be found.");
-
     setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
     
     try {
-      const apiUrl = import.meta.env.PROD 
-        ? 'https://route-safety-backend.onrender.com/api/route'
-        : 'http://localhost:5001/api/route';
+      // Use logic to determine URL
+      const apiUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5001/api/route' 
+        : 'https://route-safety-backend.onrender.com/api/route';
 
       const res = await fetch(apiUrl, {
         method: 'POST',
@@ -112,7 +110,7 @@ function App() {
       
       if (data.routes) {
         setAllRoutes(data.routes);
-        setCurrentRoute(data.routes.moderate); // Default to moderate/best
+        setCurrentRoute(data.routes.moderate);
         setWeather(data.weather);
         setRecommendation(data.recommendation);
       } else {
@@ -158,8 +156,11 @@ function App() {
   };
 
   const currentSafeSpeed = currentRoute 
-    ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance > 15 ? 'Highway' : 'City Street') 
+    ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance.includes("km") && parseFloat(currentRoute.summary.distance) > 15 ? 'Highway' : 'City Street') 
     : 0;
+
+  // Calculate destination coords safely
+  const destCoords = getDestinationCoords();
 
   return (
     <div className="app-container">
@@ -191,7 +192,7 @@ function App() {
 
         {currentRoute && weather && (
             <div className="weather-float">
-                <div className="score-circle" style={{ borderColor: currentRoute.safety.color }}>{currentRoute.safety.score}</div>
+                <div className="score-circle" style={{ borderColor: currentRoute.safety.color }}>{Math.round(currentRoute.safety.score)}</div>
                 <div style={{ textAlign: 'left' }}>
                     <strong style={{ display: 'block', marginBottom: '2px' }}>{currentRoute.safety.message}</strong>
                     <div style={{ fontSize: '12px', color: '#555', marginBottom: '2px' }}>
@@ -242,14 +243,18 @@ function App() {
         <MapContainer center={delhiPosition} zoom={13} zoomControl={false}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
-            {/* SAFE ROUTE DRAWING */}
+            {/* SAFE ROUTE DRAWING: Only render if we have valid lines */}
             {currentRoute && getRouteLine().length > 0 && (
                 <>
                     <Polyline positions={getRouteLine()} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={getRouteLine()} />
-                    <Marker position={getDestinationCoords()} icon={destIcon}>
-                        <Popup>Destination: {endAddress}</Popup>
-                    </Marker>
+                    
+                    {/* ✅ CRITICAL FIX: Only render Marker if destCoords is not null */}
+                    {destCoords && (
+                        <Marker position={destCoords} icon={destIcon}>
+                            <Popup>Destination: {endAddress}</Popup>
+                        </Marker>
+                    )}
                 </>
             )}
 
@@ -261,10 +266,11 @@ function App() {
 
       {/* 3. BOTTOM BUTTONS */}
       <div className="bottom-bar">
-        {allRoutes && allRoutes.count > 1 && (
+        {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
                 <button className="filter-btn" style={{background: '#00cc66', opacity: currentRoute===allRoutes.safest?1:0.5}} onClick={() => selectRoute('safest')}>🛡️ Safe</button>
                 <button className="filter-btn" style={{background: '#007bff', opacity: currentRoute===allRoutes.moderate?1:0.5}} onClick={() => selectRoute('moderate')}>⭐ Best</button>
+                <button className="filter-btn" style={{background: '#ff4d4d', opacity: currentRoute===allRoutes.fastest?1:0.5}} onClick={() => selectRoute('fastest')}>⚡ Fast</button>
             </div>
         )}
         <div className="button-row">
