@@ -56,9 +56,12 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
 
     console.log(`🛣️ Fetching route alternatives...`);
 
-    // --- CRITICAL CHANGE FOR 3 BUTTONS ---
-    // Added "&alternatives=true" to get multiple paths
-    const url = `http://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson&alternatives=true`;
+    // --- FIX: Using Stable Mirror to prevent 504 Timeouts ---
+    // Old (Unstable): http://router.project-osrm.org
+    // New (Stable): https://routing.openstreetmap.de/routed-car
+    const baseUrl = 'https://routing.openstreetmap.de/routed-car/route/v1/driving';
+    
+    const url = `${baseUrl}/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson&alternatives=true`;
     
     const response = await axios.get(url);
 
@@ -66,9 +69,7 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
       throw new Error("No route found.");
     }
 
-    // --- CRITICAL CHANGE ---
-    // Return ALL routes (Array), not just the first geometry.
-    // The backend routes.js needs the whole array to calculate safety for each.
+    // Return ALL routes (Array)
     return response.data.routes; 
 
   } catch (error) {
