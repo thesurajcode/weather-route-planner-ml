@@ -105,7 +105,7 @@ function App() {
     try {
       // FIX: Removed the comment that was breaking the code
       const apiUrl = import.meta.env.PROD 
-        ? 'https://route-safety-backend.onrender.com/api/route' 
+        ? 'https://route-safety-backend.onrender.com/api/route'
         : 'http://localhost:5001/api/route';
 
       const res = await fetch(apiUrl, {
