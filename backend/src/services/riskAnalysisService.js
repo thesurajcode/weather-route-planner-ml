@@ -8,8 +8,6 @@ const getRiskScore = async (weatherData, routeData) => {
   console.log("🤖 Connecting to Python ML Service...");
 
   // 1. Prepare Data for the ML Model
-  
-  // -- Weather --
   let weatherInput = "Clear";
   if (weatherData) {
       if (weatherData.condition.includes("Rain")) weatherInput = "Drizzle"; 
@@ -17,14 +15,12 @@ const getRiskScore = async (weatherData, routeData) => {
       else if (weatherData.condition.includes("Cloud")) weatherInput = "Clouds";
   }
 
-  // -- Time of Day --
   let timeInput = "Afternoon";
   const hour = new Date().getHours();
   if (hour > 20 || hour < 5) timeInput = "Night";
   else if (hour > 5 && hour < 12) timeInput = "Morning";
   else if (hour >= 17 && hour <= 20) timeInput = "Evening";
   
-  // -- Road Type --
   let roadInput = "City Street";
   if (routeData && routeData.summary && routeData.summary.distance) {
       const distanceStr = String(routeData.summary.distance); 
@@ -40,36 +36,41 @@ const getRiskScore = async (weatherData, routeData) => {
         time_of_day: timeInput
     });
 
-    // --- DEBUG LOG: See exactly what Python replied ---
+    // Debug Log
     console.log("🐍 FULL PYTHON RESPONSE:", JSON.stringify(response.data, null, 2));
 
     const mlResult = response.data;
 
-    // SAFETY CHECK: Did Python actually return a score?
-    if (mlResult.risk_score === undefined) {
-        throw new Error("Python API returned valid JSON but missing 'risk_score'. Check Python logs.");
+    // ✅ FIX: Use 'estimated_risk_score' instead of 'risk_score'
+    // Your Python API returns: { estimated_risk_score: 10, prediction_class: 0, severity: "Low" }
+    
+    // Safety Check
+    if (mlResult.estimated_risk_score === undefined) {
+        throw new Error("Python API missing 'estimated_risk_score'");
     }
 
     // 3. Process the Result
-    let score = mlResult.risk_score;
+    let score = mlResult.estimated_risk_score; 
+    let severity = mlResult.severity || "Low"; // Handle Severity
+    
     let color = "#00cc66"; // Green (Safe)
     let message = "Safe driving conditions.";
 
     if (score > 40) {
-        color = "#ff9933"; // Orange (Moderate)
+        color = "#ff9933"; // Orange
         message = "Moderate Risk: Drive Carefully.";
     }
     if (score > 75) {
-        color = "#ff4d4d"; // Red (High Risk)
+        color = "#ff4d4d"; // Red
         message = "⚠️ HIGH RISK WARNING";
     }
 
     return {
         score: score,
         color: color,
-        // If confidence is missing, default to 'High'
-        message: `${message} (AI Confidence: ${mlResult.confidence || 'High'})`,
-        factors: [`Weather: ${weatherInput}`, `Time: ${timeInput}`, `Severity: ${mlResult.severity_prediction ?? 'N/A'}`]
+        // We removed 'confidence' since your Python log didn't show it, using Severity instead
+        message: `${message} (Severity: ${severity})`,
+        factors: [`Weather: ${weatherInput}`, `Time: ${timeInput}`, `Road: ${roadInput}`]
     };
 
   } catch (error) {
@@ -79,7 +80,6 @@ const getRiskScore = async (weatherData, routeData) => {
     }
     console.log("⚠️ Using Local Fallback Logic (Simulation)...");
     
-    // Fallback logic so the app never crashes
     return { score: 20, color: "#00cc66", message: "Safe (Offline Mode)", factors: ["ML Unavailable"] };
   }
 };
