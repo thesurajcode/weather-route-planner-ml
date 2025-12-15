@@ -76,7 +76,7 @@ function App() {
   const [recommendation, setRecommendation] = useState(null);
   const watchId = useRef(null);
 
-  // --- HELPER: FETCH ROUTE FROM API ---
+  // --- HELPER: FETCH ROUTE ---
   const fetchRouteData = async (startLoc, endLoc) => {
       setLoading(true);
       setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
@@ -108,14 +108,12 @@ function App() {
       }
   };
 
-  // --- BUTTON 1: GET ROUTE (Uses text or saved GPS) ---
   const handleFindRoute = () => {
     if (!startAddress || !endAddress) return alert('Enter addresses.');
     const startToSend = exactStartCoords || startAddress;
     fetchRouteData(startToSend, endAddress);
   };
 
-  // --- BUTTON 2: DRIVE (Always uses LIVE GPS) ---
   const toggleNavigation = () => {
     if (isNavigating) {
       setIsNavigating(false);
@@ -127,20 +125,12 @@ function App() {
       if (!endAddress) return alert("Please enter a destination first.");
 
       setIsNavigating(true);
-      
-      // 1. Get current position immediately
       navigator.geolocation.getCurrentPosition((pos) => {
           const { latitude, longitude } = pos.coords;
-          const myLoc = [latitude, longitude];
-          setCurrentLocation(myLoc);
-          
-          // 2. RECALCULATE ROUTE from this exact spot to the destination
-          // This fixes the issue where the route started elsewhere
+          setCurrentLocation([latitude, longitude]);
           fetchRouteData(`${latitude},${longitude}`, endAddress);
-
       }, (err) => console.error(err), { enableHighAccuracy: true });
 
-      // 3. Keep watching movement
       watchId.current = navigator.geolocation.watchPosition(p => {
           setCurrentLocation([p.coords.latitude, p.coords.longitude]);
       }, console.error, { enableHighAccuracy: true });
@@ -152,7 +142,7 @@ function App() {
     setStartAddress("Locating..."); 
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude } = pos.coords;
-        setExactStartCoords(`${latitude},${longitude}`); // Save exact coords
+        setExactStartCoords(`${latitude},${longitude}`);
         try {
           const res = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`);
           const data = await res.json();
@@ -223,12 +213,25 @@ function App() {
         )}
 
         <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
+        
+        {/* ✅ UPDATED MAP GUIDE (LEGEND) */}
         {showLegend && (
-            <div className="legend-box" onClick={() => setShowLegend(false)}>
-                 <h4 style={{margin:'0 0 8px 0'}}>Map Guide</h4>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> Safe</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> Moderate</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> High Risk</div>
+            <div className="legend-box" onClick={() => setShowLegend(false)} style={{ width: '220px', fontSize: '11px' }}>
+                 <h4 style={{margin:'0 0 8px 0', fontSize:'13px', borderBottom:'1px solid #eee', paddingBottom:'5px'}}>🗺️ Map Guide</h4>
+                 
+                 <div style={{ fontWeight:'bold', marginTop:'6px', color:'#555' }}>Risk Score (0-100)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 0-40: Safe Route</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 41-75: Moderate Risk</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 76-100: High Risk</div>
+
+                 <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Air Quality (AQI 1-5)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 1-2: Good / Fair</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 3: Moderate</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 4-5: Poor / Hazardous</div>
+
+                 <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Markers</div>
+                 <div className="legend-item">📍 Start Location</div>
+                 <div className="legend-item">🏁 Destination</div>
             </div>
         )}
 
