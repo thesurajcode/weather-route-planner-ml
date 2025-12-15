@@ -72,7 +72,7 @@ function App() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   
-  // ✅ RESTORED: Legend & Report Menu States
+  // UI States
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
   
@@ -140,7 +140,6 @@ function App() {
     }
   };
 
-  // ✅ RESTORED: Hazard Reporting Function
   const confirmHazard = (type) => {
     if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
     const [lat, lon] = currentLocation;
@@ -170,6 +169,24 @@ function App() {
       setExactStartCoords(null); 
   };
 
+  // --- SAFE SPEED LOGIC ---
+  const calculateSafeSpeed = (riskScore, distanceString) => {
+    let baseSpeed = 50; // City Limit
+    if (distanceString && distanceString.includes("km")) {
+        const dist = parseFloat(distanceString);
+        if (dist > 15) baseSpeed = 80; // Highway Limit
+    }
+
+    // Logic: Higher Risk = Lower Speed
+    const reductionFactor = (riskScore / 10) * 0.05; 
+    let safeSpeed = baseSpeed * (1 - reductionFactor);
+    
+    // Safety Cap: If risk > 75 (Red), max speed is 30 km/h
+    if (riskScore > 75) safeSpeed = Math.min(safeSpeed, 30); 
+    
+    return Math.round(safeSpeed);
+  };
+
   const getRouteLine = () => {
       if (!currentRoute?.geometry?.coordinates) return [];
       let rawCoords = currentRoute.geometry.coordinates;
@@ -182,6 +199,11 @@ function App() {
   const destCoords = routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
   const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
+
+  // Speed Limit Display Value
+  const currentSafeSpeed = currentRoute 
+    ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance) 
+    : 0;
 
   return (
     <div className="app-container">
@@ -196,6 +218,8 @@ function App() {
       </div>
 
       <div className="map-wrapper">
+        
+        {/* 1. TRAVEL RECOMMENDATION (Safe to Travel?) */}
         {recommendation && (
             <div style={{
                 position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
@@ -224,9 +248,18 @@ function App() {
             </div>
         )}
 
+        {/* 2. SAFE SPEED LIMIT SIGN (Visible when Driving) */}
+        {isNavigating && currentRoute && (
+            <div className="speed-limit-sign" title="AI Recommended Safe Speed">
+                <div style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight:'bold' }}>Safe</div>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: '1' }}>{currentSafeSpeed}</div>
+                <div style={{ fontSize: '9px' }}>km/h</div>
+            </div>
+        )}
+
         <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
         
-        {/* MAP GUIDE (Detailed Legend) */}
+        {/* 3. DETAILED LEGEND */}
         {showLegend && (
             <div className="legend-box" onClick={() => setShowLegend(false)} style={{ width: '220px', fontSize: '11px' }}>
                  <h4 style={{margin:'0 0 8px 0', fontSize:'13px', borderBottom:'1px solid #eee', paddingBottom:'5px'}}>🗺️ Map Guide</h4>
@@ -247,7 +280,6 @@ function App() {
             </div>
         )}
 
-        {/* ✅ RESTORED: Report Hazard Button & Menu (Visible only when navigating) */}
         {isNavigating && (
             <>
                 <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
