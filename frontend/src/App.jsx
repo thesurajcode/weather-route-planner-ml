@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet-polylinedecorator';
 import './App.css';
 
-// Fix Default Leaflet Icons
+// --- ICONS SETUP ---
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
@@ -16,32 +16,27 @@ const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;"
 const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
 
-// --- FEATURE: AUTO ZOOM TO ROUTE ---
+// --- FEATURE: AUTO ZOOM ---
 function FitBounds({ route }) {
     const map = useMap();
     useEffect(() => {
         if (!route || !route.geometry || !route.geometry.coordinates) return;
         try {
-            // Flatten coordinates just in case they are nested (MultiLineString)
             const rawCoords = route.geometry.coordinates.flat(Infinity);
             const latLngs = [];
             for(let i=0; i<rawCoords.length; i+=2){
-                // GeoJSON is [lon, lat], Leaflet needs [lat, lon]
                 latLngs.push([rawCoords[i+1], rawCoords[i]]);
             }
-
             if (latLngs.length > 0) {
                 const bounds = L.latLngBounds(latLngs);
                 map.fitBounds(bounds, { padding: [80, 80], animate: true });
             }
-        } catch (e) {
-            console.error("Zoom Error:", e);
-        }
+        } catch (e) { console.error("Zoom Error:", e); }
     }, [route, map]);
     return null;
 }
 
-// --- FEATURE: ARROWS ON LINE ---
+// --- FEATURE: ARROWS ---
 function RouteArrows({ positions }) {
     const map = useMap();
     useEffect(() => {
@@ -66,8 +61,9 @@ function RecenterMap({ position }) {
 }
 
 function App() {
-  const defaultCenter = [28.6139, 77.2090]; // Delhi
+  const defaultCenter = [28.6139, 77.2090]; 
   const [startAddress, setStartAddress] = useState('');
+  const [exactStartCoords, setExactStartCoords] = useState(null); 
   const [endAddress, setEndAddress] = useState('');
   const [allRoutes, setAllRoutes] = useState(null);
   const [currentRoute, setCurrentRoute] = useState(null);
@@ -78,82 +74,48 @@ function App() {
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
   const [recommendation, setRecommendation] = useState(null);
-  
   const watchId = useRef(null);
 
-  // --- 1. ROBUST ROUTE PARSER (Fixes invisible routes) ---
-  const getRouteLine = () => {
-      if (!currentRoute?.geometry?.coordinates) return [];
+  // --- HELPER: FETCH ROUTE FROM API ---
+  const fetchRouteData = async (startLoc, endLoc) => {
+      setLoading(true);
+      setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
       
-      let rawCoords = currentRoute.geometry.coordinates;
+      try {
+        const apiUrl = window.location.hostname === 'localhost' 
+          ? 'http://localhost:5001/api/route' 
+          : 'https://route-safety-backend.onrender.com/api/route';
 
-      // Handle nested arrays (MultiLineString) which Geoapify sometimes returns
-      // If the first element is an Array of numbers, it's a Point [lon, lat] -> Standard
-      // If the first element is an Array of Arrays, it's a Segment [[lon, lat], ...] -> Nested
-      if (Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0])) {
-          rawCoords = rawCoords.flat();
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: startLoc, end: endLoc }),
+        });
+        const data = await res.json();
+        
+        if (data.routes) {
+          setAllRoutes(data.routes);
+          setCurrentRoute(data.routes.moderate);
+          setWeather(data.weather);
+          setRecommendation(data.recommendation);
+        } else {
+            alert("No routes found.");
+        }
+      } catch (e) { 
+          alert("Error: " + e.message); 
+      } finally { 
+          setLoading(false); 
       }
-
-      const validPoints = rawCoords
-        .filter(c => Array.isArray(c) && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]))
-        .map(c => [c[1], c[0]]); // Swap [lon, lat] to [lat, lon]
-
-      console.log(`📍 Drawing Route: ${validPoints.length} points found.`);
-      return validPoints;
   };
 
-  const routeLine = getRouteLine();
-
-  // --- 2. SAFE MARKER EXTRACTOR ---
-  const getStartCoords = () => routeLine.length > 0 ? routeLine[0] : null;
-  const getDestCoords = () => routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
-
-  const startCoords = getStartCoords();
-  const destCoords = getDestCoords();
-
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return alert("Geolocation not supported");
-    setStartAddress("Locating..."); 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        try {
-          const res = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`);
-          const data = await res.json();
-          if (data.features.length > 0) {
-            const p = data.features[0].properties;
-            setStartAddress([p.name, p.street, p.city].filter(Boolean).join(", "));
-          } else setStartAddress(`${latitude}, ${longitude}`);
-        } catch { setStartAddress(`${latitude}, ${longitude}`); }
-    }, () => setStartAddress(""), { enableHighAccuracy: true });
-  };
-
-  const handleFindRoute = async () => {
+  // --- BUTTON 1: GET ROUTE (Uses text or saved GPS) ---
+  const handleFindRoute = () => {
     if (!startAddress || !endAddress) return alert('Enter addresses.');
-    setLoading(true); setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
-    try {
-      const apiUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:5001/api/route' 
-        : 'https://route-safety-backend.onrender.com/api/route';
-
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start: startAddress, end: endAddress }),
-      });
-      const data = await res.json();
-      
-      console.log("📡 API Response:", data); // Debug Log
-
-      if (data.routes) {
-        setAllRoutes(data.routes);
-        setCurrentRoute(data.routes.moderate);
-        setWeather(data.weather);
-        setRecommendation(data.recommendation);
-      } else alert("No routes found.");
-    } catch (e) { alert("Error: " + e.message); } 
-    finally { setLoading(false); }
+    const startToSend = exactStartCoords || startAddress;
+    fetchRouteData(startToSend, endAddress);
   };
 
+  // --- BUTTON 2: DRIVE (Always uses LIVE GPS) ---
   const toggleNavigation = () => {
     if (isNavigating) {
       setIsNavigating(false);
@@ -161,21 +123,69 @@ function App() {
       if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
       setCurrentLocation(null);
     } else {
+      if (!navigator.geolocation) return alert("Geolocation not supported");
+      if (!endAddress) return alert("Please enter a destination first.");
+
       setIsNavigating(true);
-      navigator.geolocation.getCurrentPosition(p => setCurrentLocation([p.coords.latitude, p.coords.longitude]));
-      watchId.current = navigator.geolocation.watchPosition(p => setCurrentLocation([p.coords.latitude, p.coords.longitude]), console.error, { enableHighAccuracy: true });
+      
+      // 1. Get current position immediately
+      navigator.geolocation.getCurrentPosition((pos) => {
+          const { latitude, longitude } = pos.coords;
+          const myLoc = [latitude, longitude];
+          setCurrentLocation(myLoc);
+          
+          // 2. RECALCULATE ROUTE from this exact spot to the destination
+          // This fixes the issue where the route started elsewhere
+          fetchRouteData(`${latitude},${longitude}`, endAddress);
+
+      }, (err) => console.error(err), { enableHighAccuracy: true });
+
+      // 3. Keep watching movement
+      watchId.current = navigator.geolocation.watchPosition(p => {
+          setCurrentLocation([p.coords.latitude, p.coords.longitude]);
+      }, console.error, { enableHighAccuracy: true });
     }
   };
 
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    setStartAddress("Locating..."); 
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setExactStartCoords(`${latitude},${longitude}`); // Save exact coords
+        try {
+          const res = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          if (data.features.length > 0) {
+            setStartAddress([data.features[0].properties.name, data.features[0].properties.city].filter(Boolean).join(", "));
+          } else setStartAddress(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+        } catch { setStartAddress(`${latitude.toFixed(5)}, ${longitude.toFixed(5)}`); }
+    }, () => setStartAddress(""), { enableHighAccuracy: true });
+  };
+
+  const handleStartTyping = (e) => {
+      setStartAddress(e.target.value);
+      setExactStartCoords(null); 
+  };
+
+  const getRouteLine = () => {
+      if (!currentRoute?.geometry?.coordinates) return [];
+      let rawCoords = currentRoute.geometry.coordinates;
+      if (Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0])) rawCoords = rawCoords.flat();
+      return rawCoords.filter(c => Array.isArray(c) && c.length >= 2).map(c => [c[1], c[0]]);
+  };
+
+  const routeLine = getRouteLine();
+  const startCoords = routeLine.length > 0 ? routeLine[0] : null;
+  const destCoords = routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
   const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
 
   return (
     <div className="app-container">
-      {/* TOP BAR */}
       <div className="top-bar">
         <div className="input-row">
-            <input type="text" value={startAddress} onChange={(e) => setStartAddress(e.target.value)} placeholder="Start Location" />
+            <input type="text" value={startAddress} onChange={handleStartTyping} placeholder="Start Location" />
             <button onClick={handleUseCurrentLocation} className="icon-btn">📍</button>
         </div>
         <div className="input-row">
@@ -183,7 +193,6 @@ function App() {
         </div>
       </div>
 
-      {/* MAP AREA */}
       <div className="map-wrapper">
         {recommendation && (
             <div style={{
@@ -223,43 +232,26 @@ function App() {
             </div>
         )}
 
-        {/* Removed Key Prop to let Leaflet handle updates gracefully */}
         <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
             <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                 attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
             />
-            
-            {/* AUTO ZOOM */}
             {currentRoute && <FitBounds route={currentRoute} />}
-
-            {/* ROUTE LINE & ARROWS */}
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
                     <RouteArrows positions={routeLine} />
                 </>
             )}
-
-            {/* START & END MARKERS */}
-            {startCoords && (
-                <Marker position={startCoords} icon={startIcon}>
-                    <Popup>Start: {startAddress}</Popup>
-                </Marker>
-            )}
-            {destCoords && (
-                <Marker position={destCoords} icon={destIcon}>
-                    <Popup>End: {endAddress}</Popup>
-                </Marker>
-            )}
-
+            {startCoords && <Marker position={startCoords} icon={startIcon}><Popup>Start: {startAddress}</Popup></Marker>}
+            {destCoords && <Marker position={destCoords} icon={destIcon}><Popup>End: {endAddress}</Popup></Marker>}
             {isNavigating && currentLocation && (
                 <> <Marker position={currentLocation} icon={carIcon}><Popup>You</Popup></Marker> <RecenterMap position={currentLocation} /> </>
             )}
         </MapContainer>
       </div>
 
-      {/* BOTTOM BAR */}
       <div className="bottom-bar">
         {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
