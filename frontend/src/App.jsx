@@ -71,8 +71,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  
+  // ✅ RESTORED: Legend & Report Menu States
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
+  
   const [recommendation, setRecommendation] = useState(null);
   const watchId = useRef(null);
 
@@ -135,6 +138,15 @@ function App() {
           setCurrentLocation([p.coords.latitude, p.coords.longitude]);
       }, console.error, { enableHighAccuracy: true });
     }
+  };
+
+  // ✅ RESTORED: Hazard Reporting Function
+  const confirmHazard = (type) => {
+    if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
+    const [lat, lon] = currentLocation;
+    const time = new Date().toLocaleTimeString();
+    alert(`✅ REPORT SUBMITTED!\n\nType: ${type}\n📍 Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🕒 Time: ${time}`);
+    setShowReportMenu(false);
   };
 
   const handleUseCurrentLocation = () => {
@@ -214,7 +226,7 @@ function App() {
 
         <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
         
-        {/* ✅ UPDATED MAP GUIDE (LEGEND) */}
+        {/* MAP GUIDE (Detailed Legend) */}
         {showLegend && (
             <div className="legend-box" onClick={() => setShowLegend(false)} style={{ width: '220px', fontSize: '11px' }}>
                  <h4 style={{margin:'0 0 8px 0', fontSize:'13px', borderBottom:'1px solid #eee', paddingBottom:'5px'}}>🗺️ Map Guide</h4>
@@ -233,6 +245,23 @@ function App() {
                  <div className="legend-item">📍 Start Location</div>
                  <div className="legend-item">🏁 Destination</div>
             </div>
+        )}
+
+        {/* ✅ RESTORED: Report Hazard Button & Menu (Visible only when navigating) */}
+        {isNavigating && (
+            <>
+                <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
+                {showReportMenu && (
+                    <div className="report-menu">
+                        <div style={{ fontWeight: 'bold', marginBottom: '10px', textAlign:'center', borderBottom:'1px solid #eee', paddingBottom:'5px' }}>Report Hazard</div>
+                        <button className="menu-item" onClick={() => confirmHazard('Pothole')}>🕳️ Pothole</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Accident')}>💥 Accident</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Traffic Jam')}>🚦 Traffic</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Police')}>👮 Police</button>
+                        <button className="menu-cancel" onClick={() => setShowReportMenu(false)}>Cancel</button>
+                    </div>
+                )}
+            </>
         )}
 
         <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
