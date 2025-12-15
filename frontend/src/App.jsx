@@ -75,7 +75,6 @@ function App() {
   // UI States
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
-  const [showDetails, setShowDetails] = useState(false); // Collapsed by default
   
   const [recommendation, setRecommendation] = useState(null);
   const watchId = useRef(null);
@@ -101,10 +100,7 @@ function App() {
           setAllRoutes(data.routes);
           setCurrentRoute(data.routes.moderate);
           setWeather(data.weather);
-          
-          // Auto-hide recommendation after 5 seconds to clear screen
           setRecommendation(data.recommendation);
-          setTimeout(() => setRecommendation(null), 5000); 
         } else {
             alert("No routes found.");
         }
@@ -173,15 +169,21 @@ function App() {
       setExactStartCoords(null); 
   };
 
+  // --- SAFE SPEED LOGIC ---
   const calculateSafeSpeed = (riskScore, distanceString) => {
-    let baseSpeed = 50; 
+    let baseSpeed = 50; // City Limit
     if (distanceString && distanceString.includes("km")) {
         const dist = parseFloat(distanceString);
-        if (dist > 15) baseSpeed = 80;
+        if (dist > 15) baseSpeed = 80; // Highway Limit
     }
+
+    // Logic: Higher Risk = Lower Speed
     const reductionFactor = (riskScore / 10) * 0.05; 
     let safeSpeed = baseSpeed * (1 - reductionFactor);
+    
+    // Safety Cap: If risk > 75 (Red), max speed is 30 km/h
     if (riskScore > 75) safeSpeed = Math.min(safeSpeed, 30); 
+    
     return Math.round(safeSpeed);
   };
 
@@ -196,13 +198,9 @@ function App() {
   const startCoords = routeLine.length > 0 ? routeLine[0] : null;
   const destCoords = routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
-  
-  const getAqiColor = (aqi) => { 
-      if(aqi <= 2) return "var(--success-green)"; 
-      if(aqi === 3) return "var(--warning-yellow)"; 
-      return "var(--danger-red)"; 
-  };
+  const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
 
+  // Speed Limit Display Value
   const currentSafeSpeed = currentRoute 
     ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance) 
     : 0;
@@ -221,81 +219,77 @@ function App() {
 
       <div className="map-wrapper">
         
-        {/* 1. AUTO-HIDING RECOMMENDATION BANNER */}
+        {/* 1. TRAVEL RECOMMENDATION (Safe to Travel?) */}
         {recommendation && (
-            <div className="recommendation-banner" 
-                 style={{ 
-                     background: recommendation.shouldWait ? '#fef3c7' : '#d1fae5', 
-                     color: recommendation.shouldWait ? '#b45309' : '#065f46',
-                     border: recommendation.shouldWait ? '1px solid #fcd34d' : '1px solid #6ee7b7'
-                 }}>
+            <div style={{
+                position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
+                background: recommendation.shouldWait ? '#fff3cd' : '#d4edda',
+                color: '#333', padding: '10px 15px', borderRadius: '20px',
+                fontSize: '13px', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                zIndex: 1000, width: '90%', maxWidth: '350px', textAlign: 'center',
+                border: recommendation.shouldWait ? '1px solid #ffeeba' : '1px solid #c3e6cb'
+            }}>
                 {recommendation.text}
             </div>
         )}
 
-        {/* 2. MINIMALIST STATS CARD (Click to Expand/Collapse) */}
         {currentRoute && weather && (
-            <div className={`stats-card ${showDetails ? 'expanded' : 'collapsed'}`} onClick={() => setShowDetails(!showDetails)}>
-                
-                {/* Header: Always Visible (Summary) */}
-                <div className="stats-header">
-                    <div className="score-badge" style={{ backgroundColor: currentRoute.safety.color }}>
-                        {Math.round(currentRoute.safety.score)}
+            <div className="weather-float">
+                <div className="score-circle" style={{ borderColor: currentRoute.safety.color }}>{Math.round(currentRoute.safety.score)}</div>
+                <div style={{ textAlign: 'left' }}>
+                    <strong style={{ display: 'block', marginBottom: '2px' }}>{currentRoute.safety.message}</strong>
+                    <div style={{ fontSize: '12px', color: '#555', marginBottom: '2px' }}>
+                        ⏳ {currentRoute.summary.duration} | 📏 {currentRoute.summary.distance}
                     </div>
-                    <div className="stats-summary">
-                        <strong>{currentRoute.summary.duration}</strong> • {currentRoute.summary.distance}
+                    <div style={{ fontSize: '12px', color: '#333', fontWeight: '500' }}>
+                        🌡️ {weather.temperature}°C  | 💨 AQI: {weather.aqi}
                     </div>
-                    <div className="stats-toggle">{showDetails ? '▼' : '▲'}</div>
                 </div>
-
-                {/* Details: Collapsible */}
-                {showDetails && (
-                    <div className="stats-details">
-                        <div className="stat-row">
-                            <span>🌡️ Temp</span>
-                            <strong>{weather.temperature}°C</strong>
-                        </div>
-                        <div className="stat-row">
-                            <span>💨 AQI</span>
-                            <strong style={{ color: getAqiColor(weather.aqi) }}>{weather.aqi}</strong>
-                        </div>
-                        <div className="stat-row">
-                            <span>🚦 Status</span>
-                            <strong>{currentRoute.safety.message}</strong>
-                        </div>
-                    </div>
-                )}
             </div>
         )}
 
-        {/* 3. SPEED LIMIT (Only in Drive Mode) */}
+        {/* 2. SAFE SPEED LIMIT SIGN (Visible when Driving) */}
         {isNavigating && currentRoute && (
-            <div className="speed-limit-sign">
-                <div className="limit-label">LIMIT</div>
-                <div className="limit-value">{currentSafeSpeed}</div>
+            <div className="speed-limit-sign" title="AI Recommended Safe Speed">
+                <div style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight:'bold' }}>Safe</div>
+                <div style={{ fontSize: '22px', fontWeight: 'bold', lineHeight: '1' }}>{currentSafeSpeed}</div>
+                <div style={{ fontSize: '9px' }}>km/h</div>
             </div>
         )}
 
         <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
         
+        {/* 3. DETAILED LEGEND */}
         {showLegend && (
-            <div className="legend-box" onClick={() => setShowLegend(false)}>
-                 <h4>Map Guide</h4>
-                 <div className="legend-item"><span className="color-dot" style={{background:'var(--success-green)'}}></span> Safe (0-40)</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'var(--warning-yellow)'}}></span> Moderate (41-75)</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'var(--danger-red)'}}></span> High Risk (76+)</div>
+            <div className="legend-box" onClick={() => setShowLegend(false)} style={{ width: '220px', fontSize: '11px' }}>
+                 <h4 style={{margin:'0 0 8px 0', fontSize:'13px', borderBottom:'1px solid #eee', paddingBottom:'5px'}}>🗺️ Map Guide</h4>
+                 
+                 <div style={{ fontWeight:'bold', marginTop:'6px', color:'#555' }}>Risk Score (0-100)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 0-40: Safe Route</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 41-75: Moderate Risk</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 76-100: High Risk</div>
+
+                 <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Air Quality (AQI 1-5)</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 1-2: Good / Fair</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 3: Moderate</div>
+                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 4-5: Poor / Hazardous</div>
+
+                 <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Markers</div>
+                 <div className="legend-item">📍 Start Location</div>
+                 <div className="legend-item">🏁 Destination</div>
             </div>
         )}
 
         {isNavigating && (
             <>
-                <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)}>⚠️</button>
+                <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
                 {showReportMenu && (
                     <div className="report-menu">
-                        <div className="menu-title">Report Hazard</div>
+                        <div style={{ fontWeight: 'bold', marginBottom: '10px', textAlign:'center', borderBottom:'1px solid #eee', paddingBottom:'5px' }}>Report Hazard</div>
                         <button className="menu-item" onClick={() => confirmHazard('Pothole')}>🕳️ Pothole</button>
                         <button className="menu-item" onClick={() => confirmHazard('Accident')}>💥 Accident</button>
-                        <button className="menu-item" onClick={() => confirmHazard('Traffic')}>🚦 Traffic</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Traffic Jam')}>🚦 Traffic</button>
+                        <button className="menu-item" onClick={() => confirmHazard('Police')}>👮 Police</button>
                         <button className="menu-cancel" onClick={() => setShowReportMenu(false)}>Cancel</button>
                     </div>
                 )}
@@ -303,7 +297,10 @@ function App() {
         )}
 
         <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+            <TileLayer
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+            />
             {currentRoute && <FitBounds route={currentRoute} />}
             {currentRoute && routeLine.length > 0 && (
                 <>
@@ -322,9 +319,9 @@ function App() {
       <div className="bottom-bar">
         {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
-                <button className="filter-btn" style={{background: 'var(--success-green)', opacity: currentRoute===allRoutes.safest?1:0.5}} onClick={() => selectRoute('safest')}>🛡️ Safe</button>
-                <button className="filter-btn" style={{background: 'var(--primary-blue)', opacity: currentRoute===allRoutes.moderate?1:0.5}} onClick={() => selectRoute('moderate')}>⭐ Best</button>
-                <button className="filter-btn" style={{background: 'var(--danger-red)', opacity: currentRoute===allRoutes.fastest?1:0.5}} onClick={() => selectRoute('fastest')}>⚡ Fast</button>
+                <button className="filter-btn" style={{background: '#00cc66', opacity: currentRoute===allRoutes.safest?1:0.5}} onClick={() => selectRoute('safest')}>🛡️ Safe</button>
+                <button className="filter-btn" style={{background: '#007bff', opacity: currentRoute===allRoutes.moderate?1:0.5}} onClick={() => selectRoute('moderate')}>⭐ Best</button>
+                <button className="filter-btn" style={{background: '#ff4d4d', opacity: currentRoute===allRoutes.fastest?1:0.5}} onClick={() => selectRoute('fastest')}>⚡ Fast</button>
             </div>
         )}
         <div className="button-row">
