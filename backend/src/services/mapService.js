@@ -6,31 +6,41 @@ const GEOAPIFY_API_KEY = process.env.GEOAPIFY_API_KEY;
 
 const getCoordsFromAddress = async (address) => {
   try {
-    // 1. Handle "Lat, Lon" String Input
+    // 1. Handle "Lat, Lon" String Input (e.g., "28.5, 77.2")
     if (typeof address === 'string' && address.includes(',')) {
       const parts = address.split(',').map(p => parseFloat(p.trim()));
+      // Check if it looks like coordinates
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        // Return [lon, lat] (GeoJSON format usually expects lon first)
+        // If user typed "28.5, 77.2" (lat, lon), we return [77.2, 28.5]
         return [parts[1], parts[0]]; 
       }
     }
 
-    // 2. Handle Array [lon, lat]
-    if (Array.isArray(address) && address.length === 2) {
-      return [parseFloat(address[0]), parseFloat(address[1])];
-    }
-    
-    // 3. Handle Object { lat, lng }
-    if (typeof address === 'object' && address !== null && (address.lat || address.latitude)) {
+    // 2. Handle Direct Arrays or Objects
+    if (Array.isArray(address) && address.length === 2) return [parseFloat(address[0]), parseFloat(address[1])];
+    if (typeof address === 'object' && address !== null) {
       const lat = address.lat || address.latitude;
       const lon = address.lng || address.lon || address.longitude;
       return [parseFloat(lon), parseFloat(lat)];
     }
 
-    console.log(`🔍 Geocoding (Photon): "${address}"...`);
+    console.log(`🔍 Searching Geoapify for: "${address}"...`);
 
-    // 4. Call Photon API
-    const url = `https://photon.komoot.io/api/`;
-    const response = await axios.get(url, { params: { q: address, limit: 1 } });
+    // 3. UPGRADE: Use Geoapify Geocoding API (Better than Photon)
+    if (!GEOAPIFY_API_KEY) {
+        throw new Error("Missing GEOAPIFY_API_KEY for search.");
+    }
+
+    const url = `https://api.geoapify.com/v1/geocode/search`;
+    
+    const response = await axios.get(url, { 
+      params: { 
+        text: address,
+        apiKey: GEOAPIFY_API_KEY,
+        limit: 1 // We only need the best match
+      } 
+    });
 
     if (!response.data || !response.data.features || response.data.features.length === 0) {
       throw new Error(`Address not found: ${address}`);
@@ -38,17 +48,20 @@ const getCoordsFromAddress = async (address) => {
 
     const result = response.data.features[0];
     const [lon, lat] = result.geometry.coordinates;
+    
+    console.log(`✅ Found: ${result.properties.formatted} (${lat}, ${lon})`);
     return [lon, lat]; 
 
   } catch (error) {
     console.error("⚠️ Geocoding Error:", error.message);
-    throw new Error('Could not find coordinates.');
+    // Fallback error message
+    throw new Error('Could not find location. Try a more specific address.');
   }
 };
 
 const getRouteFromOSRM = async (startCoords, endCoords) => {
   // NOTE: Function name is kept as 'getRouteFromOSRM' to avoid breaking other files,
-  // but it now uses Geoapify.
+  // but it now uses Geoapify Routing.
 
   if (!GEOAPIFY_API_KEY) {
     throw new Error("Missing GEOAPIFY_API_KEY in environment variables.");
@@ -65,8 +78,6 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
   console.log(`🛣️ Fetching route from Geoapify...`);
 
   try {
-    // Geoapify Routing API
-    // Format: waypoints=lat1,lon1|lat2,lon2
     const waypoints = `${startLat},${startLon}|${endLat},${endLon}`;
     const url = `https://api.geoapify.com/v1/routing`;
 
@@ -75,17 +86,14 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
         waypoints: waypoints,
         mode: 'drive',
         apiKey: GEOAPIFY_API_KEY,
-        details: 'instruction_details', // Request steps
+        details: 'instruction_details',
         format: 'geojson'
       }
     });
 
     if (response.data.features && response.data.features.length > 0) {
-      console.log("✅ Route fetched successfully from Geoapify!");
-      
+      console.log("✅ Route fetched successfully!");
       const route = response.data.features[0];
-      
-      // Transform Geoapify response to match OSRM structure for frontend
       return [{
         geometry: route.geometry,
         legs: [{
@@ -100,7 +108,7 @@ const getRouteFromOSRM = async (startCoords, endCoords) => {
 
   } catch (error) {
     console.error(`❌ Geoapify Error: ${error.response?.data?.message || error.message}`);
-    throw new Error('Routing service failed. Please check server logs.');
+    throw new Error('Routing service failed.');
   }
 };
 
