@@ -12,7 +12,8 @@ const hazardSchema = new mongoose.Schema({
   hazardType: {
     type: String,
     required: true,
-    enum: ['Accident', 'Fog', 'Flooding', 'Pothole', 'Construction', 'Other'] // The types of risks
+    // ✅ FIX: Added 'Police', 'Traffic', and 'Traffic Jam' to this list
+    enum: ['Accident', 'Fog', 'Flooding', 'Pothole', 'Construction', 'Police', 'Traffic', 'Traffic Jam', 'Other'] 
   },
   description: {
     type: String,
