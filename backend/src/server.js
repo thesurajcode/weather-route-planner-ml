@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
 const app = require('./app');
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 10000; // Render uses port 10000
 
-// MongoDB Connection String (Local Database)
-// If you are using MongoDB Atlas (Cloud), replace this URL with your connection string.
-const MONGO_URI = 'mongodb://localhost:27017/safe_route_db'; 
+// FIX: Use the Environment Variable first. Only use localhost if that is missing.
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/safe_route_db';
+
+console.log("Attempting to connect to database...");
 
 mongoose.connect(MONGO_URI)
   .then(() => {
