@@ -1,12 +1,17 @@
-// backend/src/api/routes.js
 const express = require('express');
 const router = express.Router();
 
-// Correct Imports
+// 1. Import Services
 const { getRouteFromOSRM, getCoordsFromAddress } = require('../services/mapService');
 const { getWeatherForCoords } = require('../services/weatherService'); 
 const { getRiskScore } = require('../services/riskAnalysisService');
 
+// 2. Import the Hazard Model (New!)
+const Hazard = require('../models/Hazard');
+
+// ==========================================
+//  EXISTING ROUTE: Calculate Safe Path
+// ==========================================
 router.post('/route', async (req, res) => {
   try {
     const { start, end } = req.body;
@@ -21,7 +26,6 @@ router.post('/route', async (req, res) => {
     const bestRoute = routes[0]; 
 
     // 3. Get Weather (Simple Midpoint Math)
-    // calculating the average between Start and End is safer/faster
     const midLat = (startCoords[1] + endCoords[1]) / 2;
     const midLon = (startCoords[0] + endCoords[0]) / 2;
 
@@ -50,7 +54,7 @@ router.post('/route', async (req, res) => {
         });
     }
 
-    // 5. Ensure multiple routes exist for buttons
+    // 5. Ensure multiple routes exist for buttons (Demo Logic)
     if (analyzedRoutes.length < 2) {
         const base = analyzedRoutes[0];
         const baseDist = parseFloat(base.summary.distance);
@@ -93,4 +97,26 @@ router.post('/route', async (req, res) => {
   }
 });
 
-module.exports = router;
+// ==========================================
+//  NEW ROUTES: Hazard Reporting (Crowdsourcing)
+// ==========================================
+
+// POST: Report a new hazard
+router.post('/report-hazard', async (req, res) => {
+  try {
+    const { latitude, longitude, hazardType, description } = req.body;
+
+    // Validate input
+    if (!latitude || !longitude || !hazardType) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Create a new report
+    const newReport = new Hazard({
+      latitude,
+      longitude,
+      hazardType,
+      description
+    });
+
+    // Save to MongoDB

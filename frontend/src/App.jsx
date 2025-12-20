@@ -15,6 +15,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 const carIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🚗</div>', className: 'custom-car-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
 const startIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">📍</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [15, 30] });
 const destIcon = L.divIcon({ html: '<div style="font-size: 30px; line-height: 1;">🏁</div>', className: 'custom-icon', iconSize: [30, 30], iconAnchor: [5, 30] });
+const hazardIcon = L.divIcon({ html: '<div style="font-size: 25px; line-height: 1;">⚠️</div>', className: 'custom-icon', iconSize: [25, 25], iconAnchor: [12, 12] });
 
 // --- FEATURE: AUTO ZOOM ---
 function FitBounds({ route }) {
@@ -72,6 +73,9 @@ function App() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   
+  // NEW: State for Hazards
+  const [hazards, setHazards] = useState([]);
+
   // UI States
   const [showLegend, setShowLegend] = useState(false);
   const [showReportMenu, setShowReportMenu] = useState(false);
@@ -79,17 +83,63 @@ function App() {
   const [recommendation, setRecommendation] = useState(null);
   const watchId = useRef(null);
 
+  // --- API URL (Change to localhost if testing locally) ---
+  const BASE_URL = window.location.hostname === 'localhost' 
+        ? 'http://localhost:5001/api' 
+        : 'https://route-safety-backend.onrender.com/api';
+
+  // --- 1. FETCH HAZARDS ON LOAD ---
+  useEffect(() => {
+    fetchHazards();
+  }, []);
+
+  const fetchHazards = async () => {
+    try {
+        const res = await fetch(`${BASE_URL}/hazards`);
+        const data = await res.json();
+        setHazards(data);
+    } catch (e) { console.error("Error fetching hazards:", e); }
+  };
+
+  // --- 2. REPORT HAZARD TO BACKEND ---
+  const reportHazardToBackend = async (type, lat, lon) => {
+    try {
+        const res = await fetch(`${BASE_URL}/report-hazard`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lon,
+                hazardType: type,
+                description: "Reported by User"
+            })
+        });
+        if (res.ok) {
+            alert(`✅ Success! ${type} reported.`);
+            fetchHazards(); // Refresh map immediately
+        } else {
+            alert("❌ Failed to report hazard.");
+        }
+    } catch (e) { alert("Error connecting to server."); }
+  };
+
+  const confirmHazard = (type) => {
+    if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
+    const [lat, lon] = currentLocation;
+    
+    // Call the new backend function instead of just alerting
+    reportHazardToBackend(type, lat, lon);
+    
+    setShowReportMenu(false);
+  };
+
   // --- HELPER: FETCH ROUTE ---
   const fetchRouteData = async (startLoc, endLoc) => {
       setLoading(true);
       setAllRoutes(null); setCurrentRoute(null); setWeather(null); setRecommendation(null);
       
       try {
-        const apiUrl = window.location.hostname === 'localhost' 
-          ? 'http://localhost:5001/api/route' 
-          : 'https://route-safety-backend.onrender.com/api/route';
-
-        const res = await fetch(apiUrl, {
+        const res = await fetch(`${BASE_URL}/route`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ start: startLoc, end: endLoc }),
@@ -140,14 +190,6 @@ function App() {
     }
   };
 
-  const confirmHazard = (type) => {
-    if (!currentLocation) { alert("⚠️ Waiting for GPS..."); return; }
-    const [lat, lon] = currentLocation;
-    const time = new Date().toLocaleTimeString();
-    alert(`✅ REPORT SUBMITTED!\n\nType: ${type}\n📍 Location: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🕒 Time: ${time}`);
-    setShowReportMenu(false);
-  };
-
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) return alert("Geolocation not supported");
     setStartAddress("Locating..."); 
@@ -176,14 +218,9 @@ function App() {
         const dist = parseFloat(distanceString);
         if (dist > 15) baseSpeed = 80; // Highway Limit
     }
-
-    // Logic: Higher Risk = Lower Speed
     const reductionFactor = (riskScore / 10) * 0.05; 
     let safeSpeed = baseSpeed * (1 - reductionFactor);
-    
-    // Safety Cap: If risk > 75 (Red), max speed is 30 km/h
     if (riskScore > 75) safeSpeed = Math.min(safeSpeed, 30); 
-    
     return Math.round(safeSpeed);
   };
 
@@ -198,9 +235,7 @@ function App() {
   const startCoords = routeLine.length > 0 ? routeLine[0] : null;
   const destCoords = routeLine.length > 0 ? routeLine[routeLine.length - 1] : null;
   const selectRoute = (type) => { if (allRoutes && allRoutes[type]) setCurrentRoute(allRoutes[type]); };
-  const getAqiColor = (aqi) => { if(aqi <= 2) return "#00cc66"; if(aqi === 3) return "#ff9933"; return "#cc0000"; };
 
-  // Speed Limit Display Value
   const currentSafeSpeed = currentRoute 
     ? calculateSafeSpeed(currentRoute.safety.score, currentRoute.summary.distance) 
     : 0;
@@ -219,7 +254,7 @@ function App() {
 
       <div className="map-wrapper">
         
-        {/* 1. TRAVEL RECOMMENDATION (Safe to Travel?) */}
+        {/* RECOMMENDATION */}
         {recommendation && (
             <div style={{
                 position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
@@ -233,6 +268,7 @@ function App() {
             </div>
         )}
 
+        {/* WEATHER & RISK FLOAT */}
         {currentRoute && weather && (
             <div className="weather-float">
                 <div className="score-circle" style={{ borderColor: currentRoute.safety.color }}>{Math.round(currentRoute.safety.score)}</div>
@@ -248,7 +284,7 @@ function App() {
             </div>
         )}
 
-        {/* 2. SAFE SPEED LIMIT SIGN (Visible when Driving) */}
+        {/* SAFE SPEED SIGN */}
         {isNavigating && currentRoute && (
             <div className="speed-limit-sign" title="AI Recommended Safe Speed">
                 <div style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight:'bold' }}>Safe</div>
@@ -259,27 +295,20 @@ function App() {
 
         <button className="legend-btn" onClick={() => setShowLegend(!showLegend)}>?</button>
         
-        {/* 3. DETAILED LEGEND */}
+        {/* LEGEND */}
         {showLegend && (
             <div className="legend-box" onClick={() => setShowLegend(false)} style={{ width: '220px', fontSize: '11px' }}>
                  <h4 style={{margin:'0 0 8px 0', fontSize:'13px', borderBottom:'1px solid #eee', paddingBottom:'5px'}}>🗺️ Map Guide</h4>
-                 
                  <div style={{ fontWeight:'bold', marginTop:'6px', color:'#555' }}>Risk Score (0-100)</div>
                  <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 0-40: Safe Route</div>
                  <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 41-75: Moderate Risk</div>
                  <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 76-100: High Risk</div>
-
-                 <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Air Quality (AQI 1-5)</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#00cc66'}}></span> 1-2: Good / Fair</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff9933'}}></span> 3: Moderate</div>
-                 <div className="legend-item"><span className="color-dot" style={{background:'#ff4d4d'}}></span> 4-5: Poor / Hazardous</div>
-
                  <div style={{ fontWeight:'bold', marginTop:'10px', color:'#555' }}>Markers</div>
-                 <div className="legend-item">📍 Start Location</div>
-                 <div className="legend-item">🏁 Destination</div>
+                 <div className="legend-item">⚠️ Reported Hazard</div>
             </div>
         )}
 
+        {/* REPORT MENU */}
         {isNavigating && (
             <>
                 <button className="report-btn" onClick={() => setShowReportMenu(!showReportMenu)} title="Report Hazard">⚠️</button>
@@ -296,12 +325,24 @@ function App() {
             </>
         )}
 
+        {/* MAP */}
         <MapContainer center={defaultCenter} zoom={13} zoomControl={false}>
             <TileLayer
                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+                attribution='&copy; CARTO'
             />
             {currentRoute && <FitBounds route={currentRoute} />}
+            
+            {/* 3. SHOW ALL HAZARDS ON MAP */}
+            {hazards.map((h, i) => (
+                <Marker key={i} position={[h.latitude, h.longitude]} icon={hazardIcon}>
+                    <Popup>
+                        <strong>⚠️ {h.hazardType}</strong><br/>
+                        <small>Reported: {new Date(h.reportedAt).toLocaleTimeString()}</small>
+                    </Popup>
+                </Marker>
+            ))}
+
             {currentRoute && routeLine.length > 0 && (
                 <>
                     <Polyline positions={routeLine} color={currentRoute.safety.color} weight={6} />
