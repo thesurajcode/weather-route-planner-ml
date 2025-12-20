@@ -120,3 +120,26 @@ router.post('/report-hazard', async (req, res) => {
     });
 
     // Save to MongoDB
+    await newReport.save();
+
+    console.log('📝 New Hazard Reported:', hazardType);
+    res.status(201).json({ message: 'Hazard reported successfully!', report: newReport });
+
+  } catch (error) {
+    console.error('Error saving hazard:', error);
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+// GET: Fetch all hazards (For displaying on the map)
+router.get('/hazards', async (req, res) => {
+  try {
+    const hazards = await Hazard.find().sort({ reportedAt: -1 }); // Newest first
+    res.json(hazards);
+  } catch (error) {
+    console.error('Error fetching hazards:', error);
+    res.status(500).json({ error: 'Server Error' });
+  }
+});
+
+module.exports = router;
