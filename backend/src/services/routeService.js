@@ -15,8 +15,8 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 
 const calculateRoutes = async (start, end, weatherData) => {
     // 1. Get Routes from Geoapify
-    const geoapifyUrl = `https://api.geoapify.com/v1/routing?waypoints=${start}|${end}&mode=drive&alternatives=3&apiKey=${process.env.GEOAPIFY_KEY || 'YOUR_GEOAPIFY_KEY'}`;
-    const routeRes = await axios.get(geoapifyUrl);
+    const apiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY;
+    const geoapifyUrl = `https://api.geoapify.com/v1/routing?waypoints=${start}|${end}&mode=drive&alternatives=3&apiKey=${apiKey}`;
     
     if (!routeRes.data.features || routeRes.data.features.length === 0) {
         throw new Error('No route found');
