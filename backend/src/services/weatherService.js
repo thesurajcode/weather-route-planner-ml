@@ -5,7 +5,8 @@ const getWeatherForCoords = async (lat, lon) => {
         console.log(`Getting weather for ${lat}, ${lon}...`);
         
         // Use OpenWeatherMap since you have the key
-        const apiKey = process.env.WEATHER_API_KEY; 
+        // Use the name exactly as it appears in your .env file
+        const apiKey = process.env.OPENWEATHERMAP_API_KEY || process.env.WEATHER_API_KEY; 
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`;
         
         const response = await axios.get(url);
