@@ -2,70 +2,98 @@ import pandas as pd
 import numpy as np
 import random
 import os
+from datetime import datetime, timedelta
 
-# Configuration
-NUM_SAMPLES = 25000
-# Coordinates for Delhi NCR (approximate bounding box)
-DELHI_LAT_RANGE = (28.40, 28.88)
-DELHI_LON_RANGE = (76.84, 77.34)
+# --- CONFIGURATION ---
+ROW_COUNT = 1500  # Generate 1500 rows for better training
+OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'data', 'processed', 'delhi_traffic_data.csv')
 
-# Factors affecting risk
-weather_conditions = ['Clear', 'Rain', 'Fog', 'Clouds', 'Drizzle', 'Thunderstorm']
-road_types = ['Highway', 'City Street', 'Residential', 'Intersection', 'Market Area']
-times_of_day = ['Morning', 'Afternoon', 'Evening', 'Night', 'Late Night']
+# --- REAL DELHI LOCATIONS ---
+# We map specific areas to their road types
+LOCATIONS = [
+    {"name": "Noida-Greater Noida Expressway", "type": "Highway"},
+    {"name": "Delhi-Gurgaon Expressway", "type": "Highway"},
+    {"name": "DND Flyway", "type": "Highway"},
+    {"name": "Outer Ring Road (Nehru Place)", "type": "Highway"},
+    {"name": "Connaught Place Outer Circle", "type": "City"},
+    {"name": "Chandni Chowk Main Road", "type": "City"},
+    {"name": "Lajpat Nagar Market Rd", "type": "City"},
+    {"name": "Hauz Khas Village Rd", "type": "City"},
+    {"name": "Najafgarh-Dhansa Road", "type": "Rural"},
+    {"name": "Bawana Industrial Area", "type": "Rural"},
+    {"name": "Chhatarpur Farm Road", "type": "Rural"}
+]
 
-print("🚀 Starting Synthetic Data Generation for Delhi...")
+WEATHER_TYPES = ['Clear', 'Rain', 'Fog', 'Stormy']
+TRAFFIC_TYPES = ['Low', 'Medium', 'High']
 
+def generate_severity(row):
+    """
+    The 'Logic' Function: Calculates risk score (1-10) based on conditions.
+    This creates the patterns the ML model will learn.
+    """
+    score = 1  # Base score (Safe)
+    
+    # 1. Weather Impact
+    if row['Weather_Condition'] == 'Rain': score += 3
+    if row['Weather_Condition'] == 'Fog': score += 4
+    if row['Weather_Condition'] == 'Stormy': score += 5
+    
+    # 2. Road Type Impact
+    if row['Road_Type'] == 'Highway': score += 2  # High speed = higher risk
+    if row['Road_Type'] == 'Rural' and row['Weather_Condition'] in ['Fog', 'Stormy']:
+        score += 3  # Dangerous: Rural roads have poor lighting
+        
+    # 3. Traffic Impact
+    if row['Traffic_Density'] == 'High': score += 1
+    
+    # 4. Random Noise (Real life is unpredictable)
+    noise = random.randint(-1, 2)
+    score += noise
+    
+    # Clamp score between 1 and 10
+    return max(1, min(10, score))
+
+# --- GENERATION LOOP ---
 data = []
+current_date = datetime(2023, 1, 1)
 
-for _ in range(NUM_SAMPLES):
-    # 1. Random Location
-    lat = random.uniform(*DELHI_LAT_RANGE)
-    lon = random.uniform(*DELHI_LON_RANGE)
+print(f"🔄 Generating {ROW_COUNT} rows of synthetic Delhi data...")
 
-    # 2. Random Factors
-    weather = random.choice(weather_conditions)
-    road = random.choice(road_types)
-    time = random.choice(times_of_day)
-
-    # 3. Logic for Risk Calculation (The "Rules" of the World)
-    base_risk = random.randint(5, 20)
+for _ in range(ROW_COUNT):
+    # Pick random attributes
+    loc = random.choice(LOCATIONS)
+    weather = random.choice(WEATHER_TYPES)
+    traffic = random.choice(TRAFFIC_TYPES)
     
-    # Weather Risk
-    if weather == 'Rain': base_risk += 30
-    elif weather == 'Thunderstorm': base_risk += 50
-    elif weather == 'Fog': base_risk += 40
-    elif weather == 'Drizzle': base_risk += 15
-
-    # Time Risk
-    if time == 'Night' or time == 'Late Night': base_risk += 25
-    elif time == 'Evening': base_risk += 15 # Rush hour
-
-    # Road Risk
-    if road == 'Intersection': base_risk += 20
-    elif road == 'Highway': base_risk += 15
+    # Determine Surface Condition
+    surface = "Dry"
+    if weather in ['Rain', 'Stormy']: surface = "Wet"
+    if weather == 'Fog': surface = "Damp"
     
-    # Add some randomness (noise)
-    final_score = base_risk + random.randint(-5, 15)
+    # Create Row
+    row = {
+        "Date": current_date.strftime("%Y-%m-%d"),
+        "Time": f"{random.randint(0, 23):02d}:00",
+        "Area_Name": loc["name"],
+        "Road_Type": loc["type"],
+        "Weather_Condition": weather,
+        "Surface_Condition": surface,
+        "Traffic_Density": traffic
+    }
     
-    # Cap between 0 and 100
-    final_score = max(0, min(100, final_score))
+    # Calculate Target Variable (Severity)
+    row["Accident_Severity"] = generate_severity(row)
+    
+    data.append(row)
+    current_date += timedelta(minutes=random.randint(30, 120))
 
-    # Assign Severity Label
-    if final_score > 75: severity = 2      # High Risk
-    elif final_score > 40: severity = 1    # Moderate Risk
-    else: severity = 0                     # Low Risk
+# --- SAVE TO CSV ---
+df = pd.DataFrame(data)
 
-    data.append([lat, lon, weather, road, time, final_score, severity])
+# Ensure directory exists
+os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 
-# Convert to DataFrame
-cols = ['latitude', 'longitude', 'weather', 'road_type', 'time_of_day', 'risk_score', 'severity']
-df = pd.DataFrame(data, columns=cols)
-
-# Save
-output_path = os.path.join('data', 'processed', 'accidents_delhi.csv')
-df.to_csv(output_path, index=False)
-
-print(f"✅ Generated {NUM_SAMPLES} records.")
-print(f"📂 Saved to: {output_path}")
+df.to_csv(OUTPUT_PATH, index=False)
+print(f"✅ Success! Data saved to: {OUTPUT_PATH}")
 print(df.head())
