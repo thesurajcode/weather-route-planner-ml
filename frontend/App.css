@@ -1,3 +1,5 @@
+/* frontend/src/App.css */
+
 /* --- GLOBAL LAYOUT --- */
 .app-container {
   display: flex;
@@ -40,7 +42,7 @@
 .map-section {
   flex-grow: 1;
   position: relative;
-  background-color: #e5e7eb; /* Placeholder color while map loads */
+  background-color: #e5e7eb;
 }
 
 /* --- SAFETY PANEL (HUD) --- */
