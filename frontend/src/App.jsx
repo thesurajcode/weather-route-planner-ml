@@ -148,7 +148,8 @@ function App() {
         
         if (data.routes) {
           setAllRoutes(data.routes);
-          setCurrentRoute(data.routes.moderate);
+          // ✅ CHANGED DEFAULT: Now defaults to Safest instead of Moderate (Best)
+          setCurrentRoute(data.routes.safest);
           setWeather(data.weather);
           setRecommendation(data.recommendation);
         } else {
@@ -361,7 +362,9 @@ function App() {
         {allRoutes && allRoutes.count > 0 && (
             <div className="filter-row">
                 <button className="filter-btn" style={{background: '#00cc66', opacity: currentRoute===allRoutes.safest?1:0.5}} onClick={() => selectRoute('safest')}>🛡️ Safe</button>
-                <button className="filter-btn" style={{background: '#007bff', opacity: currentRoute===allRoutes.moderate?1:0.5}} onClick={() => selectRoute('moderate')}>⭐ Best</button>
+                
+                {/* ❌ REMOVED "BEST" BUTTON FROM HERE */}
+                
                 <button className="filter-btn" style={{background: '#ff4d4d', opacity: currentRoute===allRoutes.fastest?1:0.5}} onClick={() => selectRoute('fastest')}>⚡ Fast</button>
             </div>
         )}
