@@ -1,11 +1,11 @@
 import React from 'react';
 import './App.css'; 
-// ✅ FIX: Point to the new 'Map' subfolder
+
+// ✅ CORRECT: Points to 'Map' folder
 import MapContainer from './components/Map/MapContainer'; 
 
-// ⚠️ CHECK: If you moved SearchBar.jsx into the 'Controls' folder, 
-// update this line to: import SearchBar from './components/Controls/SearchBar';
-import SearchBar from './components/SearchBar'; 
+// ✅ CORRECT: Points to 'Controls' folder (Matches your screenshot)
+import SearchBar from './components/Controls/SearchBar'; 
 
 import { useApp } from './context/AppContext';
 
@@ -39,13 +39,11 @@ function App() {
           </div>
           
           <div className="route-stats">
-             {/* SAFETY RECOMMENDATION */}
              <div className={`status-card ${routeData.recommendation.shouldWait ? 'danger' : 'safe'}`}>
                 <span className="icon">{routeData.recommendation.shouldWait ? '⚠️' : '✅'}</span>
                 <p>{routeData.recommendation.text}</p>
              </div>
 
-             {/* WEATHER INFO */}
              <div className="weather-card">
                 <h4>Weather Impact</h4>
                 <div className="weather-grid">
