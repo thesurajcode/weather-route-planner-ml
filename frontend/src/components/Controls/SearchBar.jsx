@@ -1,14 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
+// ✅ FIX: Go up TWO levels (../../)
 import { useApp } from '../../context/AppContext';
 
 const SearchBar = () => {
-    // ✅ Get fetchRoute from context
     const { 
         startAddress, setStartAddress, 
         endAddress, setEndAddress, 
         setStartCoords, 
-        fetchRoute, // This is the function that calls the backend
+        fetchRoute, 
         isNavigating, resetNavigation 
     } = useApp();
 
@@ -27,7 +27,6 @@ const SearchBar = () => {
                 const response = await axios.get(url);
                 const addr = response.data.address;
                 
-                // Smart Address Formatting
                 const detailedAddress = [
                     addr.road || addr.pedestrian,
                     addr.suburb || addr.neighbourhood,
@@ -41,7 +40,6 @@ const SearchBar = () => {
         }, () => setStartAddress("Location Error"));
     };
 
-    // ✅ This function triggers the backend call
     const handleSearch = () => {
         if (!startAddress || !endAddress) {
             alert("Please enter both Start and End locations.");
@@ -51,36 +49,35 @@ const SearchBar = () => {
     };
 
     return (
-        <div className="top-bar">
-            {/* Start Input */}
-            <div className="input-group">
+        <div className="top-bar" style={{ display: 'flex', gap: '10px', width: '100%' }}>
+            <div className="input-group" style={{ flex: 1, display: 'flex' }}>
                 <input 
                     type="text" 
                     value={startAddress} 
                     onChange={(e) => setStartAddress(e.target.value)} 
                     placeholder="Start Location" 
+                    style={{ flex: 1, padding: '10px' }}
                 />
-                <button onClick={handleCurrentLocation} className="icon-btn" title="Use My Location">📍</button>
+                <button onClick={handleCurrentLocation} style={{ padding: '0 15px' }}>📍</button>
             </div>
 
-            {/* Destination Input */}
-            <div className="input-group">
+            <div className="input-group" style={{ flex: 1 }}>
                 <input 
                     type="text" 
                     value={endAddress} 
                     onChange={(e) => setEndAddress(e.target.value)} 
                     placeholder="Destination" 
+                    style={{ width: '100%', padding: '10px' }}
                 />
             </div>
 
-            {/* ✅ GET ROUTE BUTTON */}
             <div className="action-group">
                 {!isNavigating ? (
-                    <button className="get-route-btn" onClick={handleSearch}>
+                    <button onClick={handleSearch} style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
                         Get Route 🚀
                     </button>
                 ) : (
-                    <button className="reset-btn" onClick={resetNavigation}>
+                    <button onClick={resetNavigation} style={{ padding: '10px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
                         ❌ Clear
                     </button>
                 )}

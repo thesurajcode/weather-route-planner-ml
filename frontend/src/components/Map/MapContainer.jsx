@@ -3,11 +3,14 @@ import { MapContainer as LeafletMap, TileLayer, Marker, Popup, useMap } from 're
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Sub-components
+// Sub-components (These are in the same folder, so './' is still correct)
 import RouteLayer from './RouteLayer';
 import HazardMarkers from './HazardMarkers';
+
+// ✅ FIX: Go up TWO levels to find context
 import { useApp } from '../../context/AppContext';
-import { useLocation } from '../../context/LocationContext'; // If you use this for live tracking
+// If you use LocationContext, fix it here too:
+// import { useLocation } from '../../context/LocationContext'; 
 
 // --- ICONS ---
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -24,9 +27,8 @@ const FitBounds = ({ route }) => {
     const map = useMap();
     useEffect(() => {
         if (!route || !map) return;
-
-        // 1. Determine which geometry to use (Fastest or Safest)
-        // The backend sends: { routes: { fastest: {...}, safest: {...} } }
+        
+        // Handle "Fastest/Safest" structure
         let geometry = null;
         if (route.routes && route.routes.fastest) {
             geometry = route.routes.fastest.geometry;
@@ -47,41 +49,25 @@ const FitBounds = ({ route }) => {
 
 const MapContainer = () => {
     const { currentRoute, hazards, isNavigating, startCoords } = useApp();
-    const { currentLocation } = useLocation ? useLocation() : { currentLocation: null };
-
-    // Default Center (Delhi) - Used only if no location
+    
+    // Default Center (Delhi)
     const defaultCenter = [28.6139, 77.2090];
-
-    // --- HELPER: Extract Start/End Points from the New Data Structure ---
+    
+    // Parse Start/End
     const getEndpoints = () => {
-        // If no route loaded yet
         if (!currentRoute) return { start: null, end: null };
 
-        // Handle New "Hybrid" Structure
-        let activeRoute = null;
-        if (currentRoute.routes && currentRoute.routes.fastest) {
-            activeRoute = currentRoute.routes.fastest;
-        } else {
-            activeRoute = currentRoute; // Fallback for old structure
-        }
-
+        let activeRoute = currentRoute.routes?.fastest || currentRoute;
         if (!activeRoute?.geometry?.coordinates) return { start: null, end: null };
 
-        // Flatten coordinates to find first and last point
         const raw = activeRoute.geometry.coordinates.flat(Infinity);
-        // GeoJSON is [Lon, Lat], Leaflet needs [Lat, Lon]
         const start = [raw[1], raw[0]];
         const end = [raw[raw.length - 1], raw[raw.length - 2]];
-        
         return { start, end };
     };
 
     const { start, end } = getEndpoints();
-
-    // Use current location or default for initial center
-    const initialCenter = startCoords 
-        ? startCoords.split(',').map(Number) 
-        : (currentLocation || defaultCenter);
+    const initialCenter = startCoords ? startCoords.split(',').map(Number) : defaultCenter;
 
     return (
         <div className="map-wrapper" style={{ height: '100%', width: '100%' }}>
@@ -90,31 +76,14 @@ const MapContainer = () => {
                     url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                     attribution='&copy; CARTO'
                 />
-
-                {/* 1. Draw Lines (Blue & Green) */}
                 {currentRoute && <RouteLayer route={currentRoute} />}
-                
-                {/* 2. Hazard Icons */}
                 <HazardMarkers hazards={hazards} />
-
-                {/* 3. Start/End Markers */}
-                {/* Priority: Explicit Start Coords > Route Start Point */}
+                
                 {(startCoords || start) && (
-                    <Marker 
-                        position={startCoords ? startCoords.split(',').map(Number) : start} 
-                        icon={startIcon} 
-                    />
+                    <Marker position={startCoords ? startCoords.split(',').map(Number) : start} icon={startIcon} />
                 )}
                 {end && <Marker position={end} icon={destIcon} />}
                 
-                {/* 4. Live User Location */}
-                {isNavigating && currentLocation && (
-                    <Marker position={currentLocation} icon={carIcon} zIndexOffset={1000}>
-                        <Popup>You</Popup>
-                    </Marker>
-                )}
-
-                {/* 5. Auto-Zoom Effect */}
                 {currentRoute && <FitBounds route={currentRoute} />}
             </LeafletMap>
         </div>
