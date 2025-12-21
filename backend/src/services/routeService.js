@@ -2,11 +2,19 @@ const axios = require('axios');
 const Hazard = require('../models/Hazard'); 
 
 // --- HELPER: Geocode Address (Convert "Delhi" -> "28.6, 77.2") ---
-async function getCoordinates(location, apiKey) {
-    // If it already looks like coordinates (e.g., "28.6,77.2"), just return it
+// ✅ UPDATED: Now self-contained so it can be exported
+async function getCoordinates(location) {
+    // 1. Get API Key inside the function
+    const apiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY;
+    if (!apiKey) throw new Error("CRITICAL: Geoapify API Key is missing.");
+
+    // 2. If it already looks like coordinates (e.g., "28.6,77.2"), just return it
     const coordPattern = /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/; 
-    if (coordPattern.test(location)) {
-        return location;
+    // Remove spaces just in case
+    const cleanLoc = location.replace(/\s/g, ''); 
+    
+    if (coordPattern.test(cleanLoc)) {
+        return cleanLoc;
     }
 
     console.log(`🌍 Converting "${location}" to coordinates...`);
@@ -42,12 +50,10 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 const calculateRoutes = async (start, end, weatherData) => {
     // 1. Get API Key
     const apiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY;
-    if (!apiKey) throw new Error("CRITICAL: Geoapify API Key is missing.");
 
-    // 2. Resolve Locations to Coordinates (The Fix!)
-    // If user sends "Sarita Vihar", this converts it to "28.52, 77.28"
-    const startCoords = await getCoordinates(start, apiKey);
-    const endCoords = await getCoordinates(end, apiKey);
+    // 2. Resolve Locations to Coordinates
+    const startCoords = await getCoordinates(start);
+    const endCoords = await getCoordinates(end);
 
     // 3. Get Routes from Geoapify
     const geoapifyUrl = `https://api.geoapify.com/v1/routing?waypoints=${startCoords}|${endCoords}&mode=drive&alternatives=3&apiKey=${apiKey}`;
@@ -124,4 +130,5 @@ const calculateRoutes = async (start, end, weatherData) => {
     return analyzedRoutes;
 };
 
-module.exports = { calculateRoutes };
+// ✅ Export getCoordinates so routes.js can use it
+module.exports = { calculateRoutes, getCoordinates };

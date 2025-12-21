@@ -1,23 +1,29 @@
 const express = require('express');
 const router = express.Router();
 const Hazard = require('../models/Hazard');
-const { calculateRoutes } = require('../services/routeService');
+// ✅ Import the new helper
+const { calculateRoutes, getCoordinates } = require('../services/routeService');
 const { getWeatherForCoords } = require('../services/weatherService');
 
 // --- GET ROUTE (The Brain) ---
 router.post('/route', async (req, res) => {
-    const { start, end } = req.body; // Expects "lat,lon" strings
+    const { start, end } = req.body; 
     if (!start || !end) return res.status(400).json({ error: 'Start and End required.' });
 
     try {
-        // 1. Get Weather for the starting point
-        const [startLat, startLon] = start.split(',');
+        // 1. ✅ FIX: Convert text (e.g. "Delhi") to Coords (e.g. "28.6,77.2") FIRST
+        // This prevents the "Weather API 400" error
+        const startCoords = await getCoordinates(start);
+        const [startLat, startLon] = startCoords.split(',');
+
+        // 2. Now fetch weather using valid numbers
         const weather = await getWeatherForCoords(startLat, startLon);
 
-        // 2. Calculate Routes (using our new Service)
+        // 3. Calculate Routes 
+        // We pass the original 'start'/'end' because calculateRoutes also does its own checking
         const analyzedRoutes = await calculateRoutes(start, end, weather);
 
-        // 3. Sort Results
+        // 4. Sort Results
         const fastest = [...analyzedRoutes].sort((a, b) => 
             parseFloat(a.summary.duration) - parseFloat(b.summary.duration)
         )[0];
@@ -26,7 +32,7 @@ router.post('/route', async (req, res) => {
             a.safety.score - b.safety.score
         )[0];
 
-        // 4. Send Response
+        // 5. Send Response
         res.json({
             weather,
             routes: { fastest, safest, count: analyzedRoutes.length },
