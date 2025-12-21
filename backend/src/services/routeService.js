@@ -15,8 +15,13 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 
 const calculateRoutes = async (start, end, weatherData) => {
     // 1. Get Routes from Geoapify
-    const apiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY;
+    // ✅ FIX: Use the exact name from your Render screenshot (GEOAPIFY_API_KEY)
+    const apiKey = process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY || 'YOUR_GEOAPIFY_KEY';
+    
     const geoapifyUrl = `https://api.geoapify.com/v1/routing?waypoints=${start}|${end}&mode=drive&alternatives=3&apiKey=${apiKey}`;
+    
+    // ✅ THIS WAS MISSING: Actually calling the API
+    const routeRes = await axios.get(geoapifyUrl);
     
     if (!routeRes.data.features || routeRes.data.features.length === 0) {
         throw new Error('No route found');
