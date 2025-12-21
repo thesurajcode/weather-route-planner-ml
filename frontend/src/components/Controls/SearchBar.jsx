@@ -1,56 +1,58 @@
 import React from 'react';
-import axios from 'axios'; // Ensure you have axios installed
+import axios from 'axios';
 import { useApp } from '../../context/AppContext';
 
 const SearchBar = () => {
-    // We don't need reverseGeocode import anymore, we will do it better here.
-    const { startAddress, setStartAddress, endAddress, setEndAddress, setStartCoords } = useApp();
+    // ✅ Get fetchRoute from context
+    const { 
+        startAddress, setStartAddress, 
+        endAddress, setEndAddress, 
+        setStartCoords, 
+        fetchRoute, // This is the function that calls the backend
+        isNavigating, resetNavigation 
+    } = useApp();
 
     const handleCurrentLocation = () => {
         setStartAddress("Locating...");
-
         if (!navigator.geolocation) {
-            alert("Geolocation is not supported by your browser");
-            setStartAddress("");
+            alert("Geolocation is not supported");
             return;
         }
-
         navigator.geolocation.getCurrentPosition(async (pos) => {
             const { latitude, longitude } = pos.coords;
-            
-            // 1. Set the coordinates for the backend
             setStartCoords(`${latitude},${longitude}`);
 
             try {
-                // 2. Call Nominatim (OpenStreetMap) directly for full details
                 const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`;
                 const response = await axios.get(url);
                 const addr = response.data.address;
-
-                // 3. SMART FORMATTING: Create a detailed string
-                // It looks for: "Street Name, Area Name, City Name"
+                
+                // Smart Address Formatting
                 const detailedAddress = [
-                    addr.road || addr.pedestrian || addr.building, // Street
-                    addr.suburb || addr.neighbourhood || addr.residential, // Area
-                    addr.city || addr.town || addr.village // City
-                ].filter(Boolean).join(', '); // Joins with commas, removes empty parts
+                    addr.road || addr.pedestrian,
+                    addr.suburb || addr.neighbourhood,
+                    addr.city || addr.town
+                ].filter(Boolean).join(', ');
 
-                // 4. Update the input box
-                setStartAddress(detailedAddress || "Unknown Location");
-
+                setStartAddress(detailedAddress || "My Location");
             } catch (error) {
-                console.error("Address Error:", error);
-                setStartAddress(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+                setStartAddress(`${latitude}, ${longitude}`);
             }
-        }, (err) => {
-            console.error("GPS Error:", err);
-            setStartAddress("");
-            alert("Could not get location.");
-        });
+        }, () => setStartAddress("Location Error"));
+    };
+
+    // ✅ This function triggers the backend call
+    const handleSearch = () => {
+        if (!startAddress || !endAddress) {
+            alert("Please enter both Start and End locations.");
+            return;
+        }
+        fetchRoute(startAddress, endAddress);
     };
 
     return (
         <div className="top-bar">
+            {/* Start Input */}
             <div className="input-group">
                 <input 
                     type="text" 
@@ -60,6 +62,8 @@ const SearchBar = () => {
                 />
                 <button onClick={handleCurrentLocation} className="icon-btn" title="Use My Location">📍</button>
             </div>
+
+            {/* Destination Input */}
             <div className="input-group">
                 <input 
                     type="text" 
@@ -67,6 +71,19 @@ const SearchBar = () => {
                     onChange={(e) => setEndAddress(e.target.value)} 
                     placeholder="Destination" 
                 />
+            </div>
+
+            {/* ✅ GET ROUTE BUTTON */}
+            <div className="action-group">
+                {!isNavigating ? (
+                    <button className="get-route-btn" onClick={handleSearch}>
+                        Get Route 🚀
+                    </button>
+                ) : (
+                    <button className="reset-btn" onClick={resetNavigation}>
+                        ❌ Clear
+                    </button>
+                )}
             </div>
         </div>
     );
