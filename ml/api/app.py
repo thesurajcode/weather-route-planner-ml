@@ -1,75 +1,99 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import joblib
+import pickle
 import pandas as pd
 import os
 
 app = Flask(__name__)
-CORS(app)  # This allows your Node.js backend to talk to this Python server
+CORS(app)  # Allows your Node.js backend to talk to this
 
-# 1. Load the Model and Encoders
+# --- 1. ROBUST MODEL LOADING ---
 print("⏳ Loading AI Models...")
-models_path = os.path.join(os.path.dirname(__file__), '..', 'models')
+
+# Get the absolute path to the 'ml' folder
+# We assume this file is in ml/api/app.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
+ML_DIR = os.path.abspath(os.path.join(BASE_DIR, '..')) # Go up to 'ml'
+MODELS_DIR = os.path.join(ML_DIR, 'models')
+
+MODEL_PATH = os.path.join(MODELS_DIR, 'risk_model.pkl')
+ENCODER_PATH = os.path.join(MODELS_DIR, 'encoders.pkl')
 
 try:
-    model = joblib.load(os.path.join(models_path, 'accident_risk_model.pkl'))
-    le_weather = joblib.load(os.path.join(models_path, 'le_weather.pkl'))
-    le_road = joblib.load(os.path.join(models_path, 'le_road.pkl'))
-    le_time = joblib.load(os.path.join(models_path, 'le_time.pkl'))
-    print("✅ Models loaded successfully!")
+    with open(MODEL_PATH, 'rb') as f:
+        model = pickle.load(f)
+    with open(ENCODER_PATH, 'rb') as f:
+        encoders = pickle.load(f)
+        # Extract individual encoders
+        le_weather = encoders['weather']
+        le_road = encoders['road']
+        le_surface = encoders['surface']
+        
+    print("✅ Models & Encoders loaded successfully!")
 except FileNotFoundError:
-    print("❌ Error: Model files not found. Did you run train_model.py?")
-    exit()
+    print(f"❌ Error: Model files not found at {MODEL_PATH}")
+    print("Did you run 'python train_model.py'?")
+    model = None
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({"status": "ML API is Running", "model_accuracy": "84.8%"})
+    if model:
+        return jsonify({"status": "ML API is Running", "brain_status": "Active"})
+    else:
+        return jsonify({"status": "Error", "message": "Models not loaded"}), 500
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    if not model:
+        return jsonify({"error": "Model is not loaded"}), 500
+
     try:
-        # 1. Get data from the request
+        # 1. Get Data from Request
         data = request.get_json()
         
-        # Expected format: {"weather": "Rain", "road_type": "Highway", "time_of_day": "Night"}
+        # Inputs: Match exactly what 'generate_data.py' produced
         weather_input = data.get('weather', 'Clear')
-        road_input = data.get('road_type', 'City Street')
-        time_input = data.get('time_of_day', 'Day')
+        road_input = data.get('road_type', 'City')
+        surface_input = data.get('surface', 'Dry') # New Feature!
 
-        # 2. Convert text to numbers (using our loaded encoders)
-        # We use a helper function to handle unknown categories safely
+        # 2. Helper: Safe Transform (Handle unknown values)
         def safe_transform(encoder, value):
             try:
                 return encoder.transform([value])[0]
             except ValueError:
-                return encoder.transform([encoder.classes_[0]])[0] # Default to first class if unknown
+                # If "Snow" comes but we never trained on Snow, use the first known class
+                return encoder.transform([encoder.classes_[0]])[0]
 
-        w_encoded = safe_transform(le_weather, weather_input)
-        r_encoded = safe_transform(le_road, road_input)
-        t_encoded = safe_transform(le_time, time_input)
+        # 3. Encode Inputs
+        w_code = safe_transform(le_weather, weather_input)
+        r_code = safe_transform(le_road, road_input)
+        s_code = safe_transform(le_surface, surface_input)
 
-        # 3. Create a DataFrame for prediction
-        features = pd.DataFrame([[w_encoded, r_encoded, t_encoded]], 
-                              columns=['weather_encoded', 'road_encoded', 'time_encoded'])
+        # 4. Create DataFrame (Must match training columns EXACTLY)
+        features = pd.DataFrame([[w_code, r_code, s_code]], 
+                                columns=['Weather_Code', 'Road_Code', 'Surface_Code'])
 
-        # 4. Make Prediction
-        prediction = model.predict(features)[0]  # 0, 1, or 2
-        
-        # 5. Interpret Result
-        severity_map = {0: "Low", 1: "Moderate", 2: "High"}
-        risk_score_map = {0: 10, 1: 50, 2: 90} # Estimated score based on class
+        # 5. Predict
+        # The model returns a number between 1 and 10
+        severity_score = model.predict(features)[0]
 
-        result = {
-            "prediction_class": int(prediction),
-            "severity": severity_map[int(prediction)],
-            "estimated_risk_score": risk_score_map[int(prediction)]
-        }
+        # 6. Convert to Risk Percentage (0-100)
+        risk_percentage = min(100, max(0, severity_score * 10))
 
-        return jsonify(result)
+        return jsonify({
+            "risk_score": round(risk_percentage, 1),
+            "severity_level": "High" if risk_percentage > 70 else "Medium" if risk_percentage > 40 else "Low",
+            "inputs_received": {
+                "weather": weather_input,
+                "road": road_input,
+                "surface": surface_input
+            }
+        })
 
     except Exception as e:
+        print(f"Prediction Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Run on port 5002 (since Node uses 5001)
+    # Run on 5002 so it doesn't conflict with Node.js
     app.run(port=5002, debug=True)
