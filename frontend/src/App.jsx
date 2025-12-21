@@ -1,7 +1,12 @@
 import React from 'react';
-import './App.css'; // Ensure you have your CSS
-import MapContainer from './components/MapContainer';
-import SearchBar from './components/SearchBar';
+import './App.css'; 
+// ✅ FIX: Point to the new 'Map' subfolder
+import MapContainer from './components/Map/MapContainer'; 
+
+// ⚠️ CHECK: If you moved SearchBar.jsx into the 'Controls' folder, 
+// update this line to: import SearchBar from './components/Controls/SearchBar';
+import SearchBar from './components/SearchBar'; 
+
 import { useApp } from './context/AppContext';
 
 function App() {
@@ -15,7 +20,6 @@ function App() {
           <h1>🛡️ SafeRoute AI</h1>
         </div>
         
-        {/* This is the ONLY Search Bar we need */}
         <div className="search-container">
           <SearchBar />
         </div>
@@ -26,7 +30,7 @@ function App() {
         <MapContainer />
       </main>
 
-      {/* 3. SAFETY HUD (Pop-up when route is found) */}
+      {/* 3. SAFETY HUD */}
       {isNavigating && routeData && (
         <div className="safety-panel">
           <div className="panel-header">
