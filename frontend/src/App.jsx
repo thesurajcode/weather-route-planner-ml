@@ -1,11 +1,10 @@
 import React from 'react';
-import './App.css'; 
-
-// Components - We'll create these in the next steps
-import MapContainer from './components/Map/MapContainer'; 
-import SearchBar from './components/Controls/SearchBar'; 
+import './App.css';
+import MapContainer from './components/Map/MapContainer';
+import SearchBar from './components/Controls/SearchBar';
 import WeatherHUD from './components/Overlays/WeatherHUD';
-
+import Recommendation from './components/Overlays/Recommendation';
+import Legend from './components/Overlays/Legend';
 import { useApp } from './context/AppContext';
 
 function App() {
@@ -13,33 +12,30 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* --- HEADER --- */}
       <header className="app-header">
-        <div className="logo-area">
-          <h1>🛡️ SafeRoute AI</h1>
+        <div className="logo-section">
+          <span className="logo-icon">🛡️</span>
+          <h1>SafeRoute AI</h1>
         </div>
-        
-        <div className="search-container">
+        <div className="controls-section">
           <SearchBar />
         </div>
       </header>
 
-      {/* --- MAIN CONTENT (MAP) --- */}
-      <main className="map-section">
-        {loading && (
-          <div className="map-overlay-loading">
-            <div className="spinner"></div>
-            <p>Analyzing Route Safety...</p>
-          </div>
-        )}
-        <MapContainer />
-      </main>
+      <main className="main-content">
+        <div className="map-wrapper">
+          {loading && <div className="loading-spinner">Analyzing Safety...</div>}
+          <MapContainer />
+          <Legend />
+        </div>
 
-      {/* --- SAFETY & WEATHER OVERLAY --- */}
-      {/* This only shows up after you click "Get Route" */}
-      {isNavigating && currentRoute && (
-        <WeatherHUD data={currentRoute} />
-      )}
+        {isNavigating && currentRoute && (
+          <aside className="info-panel">
+            <Recommendation />
+            <WeatherHUD />
+          </aside>
+        )}
+      </main>
     </div>
   );
 }

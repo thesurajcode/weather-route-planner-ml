@@ -3,40 +3,36 @@ import api from '../../services/api';
 import { useApp } from '../../context/AppContext';
 
 const ReportMenu = ({ position, onClose }) => {
-    const { setHazards } = useApp();
-    const [type, setType] = useState('Traffic');
+    const { fetchHazards } = useApp();
+    const [hazardType, setHazardType] = useState('Traffic');
 
-    const submitReport = async () => {
+    const handleReport = async () => {
         try {
             await api.post('/report-hazard', {
                 latitude: position.lat,
                 longitude: position.lng,
-                hazardType: type,
-                description: `User reported ${type}`
+                hazardType,
+                description: `User reported ${hazardType} at this location.`
             });
-            
-            // Refresh hazards list
-            const res = await api.get('/hazards');
-            setHazards(res.data);
+            fetchHazards(); // Refresh icons on map
             onClose();
-            alert("Hazard reported successfully!");
+            alert(`Reported ${hazardType} successfully!`);
         } catch (err) {
-            console.error(err);
+            alert("Error reporting hazard.");
         }
     };
 
     return (
-        <div className="report-popup" style={{ padding: '10px' }}>
-            <h4>Report Issue</h4>
-            <select value={type} onChange={(e) => setType(e.target.value)} style={{ width: '100%', padding: '5px' }}>
-                <option>Traffic</option>
-                <option>Accident</option>
-                <option>Flooding</option>
-                <option>Pothole</option>
+        <div className="report-menu">
+            <h4>Report Hazard</h4>
+            <select value={hazardType} onChange={(e) => setHazardType(e.target.value)}>
+                <option value="Traffic">🚦 Traffic Jam</option>
+                <option value="Accident">💥 Accident</option>
+                <option value="Flooding">🌊 Flooding</option>
+                <option value="Police">👮 Police</option>
+                <option value="Pothole">🕳️ Pothole</option>
             </select>
-            <button onClick={submitReport} style={{ marginTop: '10px', width: '100%', background: '#ef4444', color: 'white', border: 'none', padding: '5px' }}>
-                Submit
-            </button>
+            <button onClick={handleReport} className="submit-report-btn">Submit Report</button>
         </div>
     );
 };

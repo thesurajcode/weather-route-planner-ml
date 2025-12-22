@@ -1,30 +1,21 @@
 import { useEffect } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { useApp } from '../../context/AppContext';
 
-export const FitBounds = ({ route }) => {
+const MapEffects = () => {
     const map = useMap();
+    const { currentRoute } = useApp();
+
     useEffect(() => {
-        if (!route?.geometry?.coordinates) return;
-        try {
-            const rawCoords = route.geometry.coordinates.flat(Infinity);
-            const latLngs = [];
-            for (let i = 0; i < rawCoords.length; i += 2) {
-                latLngs.push([rawCoords[i + 1], rawCoords[i]]);
-            }
-            if (latLngs.length > 0) {
-                const bounds = L.latLngBounds(latLngs);
-                map.fitBounds(bounds, { padding: [80, 80], animate: true });
-            }
-        } catch (e) { console.error("Zoom Error:", e); }
-    }, [route, map]);
+        if (currentRoute?.routes?.safest) {
+            const coords = currentRoute.routes.safest.geometry.coordinates[0];
+            const bounds = L.latLngBounds(coords.map(c => [c[1], c[0]]));
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }, [currentRoute, map]);
+
     return null;
 };
 
-export const RecenterMap = ({ position }) => {
-    const map = useMap();
-    useEffect(() => {
-        if (position) map.flyTo(position, 16);
-    }, [position, map]);
-    return null;
-};
+export default MapEffects;

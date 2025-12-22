@@ -1,26 +1,43 @@
-import api from './api';
+import React from 'react';
+import { Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import { useApp } from '../../context/AppContext';
 
-export const getHazards = async () => {
-    try {
-        const response = await api.get('/hazards');
-        return response.data;
-    } catch (error) {
-        console.error("Fetch Hazards Error:", error);
-        return [];
-    }
+// --- Hazard Icon Factory ---
+const getHazardIcon = (type) => {
+    let emoji = '⚠️';
+    if (type === 'Accident') emoji = '💥';
+    if (type === 'Police') emoji = '👮';
+    if (type === 'Traffic Jam' || type === 'Traffic') emoji = '🚦';
+    if (type === 'Flooding') emoji = '🌊';
+
+    return L.divIcon({
+        html: `<div class="hazard-marker">${emoji}</div>`,
+        className: 'custom-hazard',
+        iconSize: [30, 30]
+    });
 };
 
-export const reportHazard = async (type, lat, lon) => {
-    try {
-        const response = await api.post('/report-hazard', {
-            latitude: lat,
-            longitude: lon,
-            hazardType: type,
-            description: "User Reported"
-        });
-        return response.ok || response.status === 200;
-    } catch (error) {
-        console.error("Report Hazard Error:", error);
-        return false;
-    }
+const HazardMarkers = () => {
+    const { hazards } = useApp();
+
+    return (
+        <>
+            {hazards.map((hazard) => (
+                <Marker 
+                    key={hazard._id} 
+                    position={[hazard.latitude, hazard.longitude]}
+                    icon={getHazardIcon(hazard.hazardType)}
+                >
+                    <Popup>
+                        <strong>{hazard.hazardType}</strong><br/>
+                        {hazard.description || 'Reported by user'}<br/>
+                        <small>{new Date(hazard.reportedAt).toLocaleString()}</small>
+                    </Popup>
+                </Marker>
+            ))}
+        </>
+    );
 };
+
+export default HazardMarkers;

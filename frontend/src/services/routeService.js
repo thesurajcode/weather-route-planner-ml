@@ -1,26 +1,24 @@
-import api from './api';
+/**
+ * Processes the dual-route data for the UI
+ * @param {Object} data - The response from the backend /api/route
+ */
+export const processRouteData = (data) => {
+    if (!data || !data.routes) return null;
 
-export const fetchRoute = async (start, end) => {
-    try {
-        const response = await api.post('/route', { start, end });
-        return response.data;
-    } catch (error) {
-        console.error("Route Fetch Error:", error);
-        throw error;
-    }
-};
+    const { fastest, safest } = data.routes;
 
-export const reverseGeocode = async (lat, lon) => {
-    try {
-        // Using Photon for free reverse geocoding
-        const response = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}`);
-        const data = await response.json();
-        if (data.features.length > 0) {
-            const p = data.features[0].properties;
-            return [p.name, p.city].filter(Boolean).join(", ");
+    return {
+        fastest: {
+            ...fastest,
+            label: "Fastest Route",
+            color: "#3b82f6", // Blue
+            score: fastest.safety.score
+        },
+        safest: {
+            ...safest,
+            label: "Safest Route (AI)",
+            color: "#10b981", // Green
+            score: safest.safety.score
         }
-        return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    } catch (error) {
-        return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    }
+    };
 };

@@ -1,30 +1,51 @@
-import React, { useEffect } from 'react';
-import { Polyline, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import React from 'react';
+import { Polyline, Popup } from 'react-leaflet';
 
 const RouteLayer = ({ routes }) => {
-    const map = useMap();
-
-    useEffect(() => {
-        if (routes?.fastest?.geometry) {
-            const latLngs = routes.fastest.geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
-            map.fitBounds(latLngs, { padding: [50, 50] });
-        }
-    }, [routes, map]);
-
     if (!routes) return null;
 
-    // Convert GeoJSON [lon, lat] to Leaflet [lat, lon]
-    const fastestCoords = routes.fastest.geometry.coordinates[0].map(c => [c[1], c[0]]);
-    const safestCoords = routes.safest.geometry.coordinates[0].map(c => [c[1], c[0]]);
+    // Helper to flip coordinates from [lon, lat] to [lat, lon] for Leaflet
+    const processCoords = (geometry) => {
+        return geometry.coordinates[0].map(coord => [coord[1], coord[0]]);
+    };
+
+    const fastestPath = processCoords(routes.fastest.geometry);
+    const safestPath = processCoords(routes.safest.geometry);
 
     return (
         <>
-            {/* Fastest Route - Blue */}
-            <Polyline positions={fastestCoords} pathOptions={{ color: '#3b82f6', weight: 6, opacity: 0.7 }} />
-            
-            {/* Safest Route - Green */}
-            <Polyline positions={safestCoords} pathOptions={{ color: '#10b981', weight: 6, opacity: 0.9 }} />
+            {/* 🏎️ FASTEST ROUTE - Blue Dashed Line */}
+            <Polyline 
+                positions={fastestPath} 
+                pathOptions={{ 
+                    color: '#3b82f6', 
+                    weight: 4, 
+                    dashArray: '10, 10', 
+                    opacity: 0.6 
+                }} 
+            >
+                <Popup>
+                    <strong>Fastest Route</strong><br/>
+                    Time: {routes.fastest.summary.duration}<br/>
+                    Safety Score: {routes.fastest.safety.score}/100
+                </Popup>
+            </Polyline>
+
+            {/* 🛡️ SAFEST ROUTE - Solid Green Line */}
+            <Polyline 
+                positions={safestPath} 
+                pathOptions={{ 
+                    color: '#10b981', 
+                    weight: 7, 
+                    opacity: 1 
+                }} 
+            >
+                <Popup>
+                    <strong>Safest Route (AI Optimized)</strong><br/>
+                    Time: {routes.safest.summary.duration}<br/>
+                    Safety Score: {routes.safest.safety.score}/100
+                </Popup>
+            </Polyline>
         </>
     );
 };

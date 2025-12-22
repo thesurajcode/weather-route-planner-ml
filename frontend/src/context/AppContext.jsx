@@ -1,34 +1,43 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../services/api';
 
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-    // --- Navigation & Route State ---
-    const [currentRoute, setCurrentRoute] = useState(null); 
+    const [currentRoute, setCurrentRoute] = useState(null); // Holds { fastest, safest, weather }
     const [isNavigating, setIsNavigating] = useState(false);
+    const [isDriving, setIsDriving] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [hazards, setHazards] = useState([]);
     
-    // --- Input & Location State ---
+    // Inputs
     const [startAddress, setStartAddress] = useState('');
     const [endAddress, setEndAddress] = useState('');
     const [startCoords, setStartCoords] = useState(null);
-    const [hazards, setHazards] = useState([]);
 
-    // --- Action: Fetch Route from Backend ---
+    // Fetch hazards from MongoDB on load
+    const fetchHazards = async () => {
+        try {
+            const res = await api.get('/hazards');
+            setHazards(res.data);
+        } catch (err) {
+            console.error("Error fetching hazards:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchHazards();
+    }, []);
+
     const fetchRoute = async (start, end) => {
         setLoading(true);
         try {
-            // Sends start/end (text or coords) to your Node backend
             const response = await api.post('/route', { start, end });
-            
-            // Backend returns: { routes: { fastest, safest }, weather, recommendation }
             setCurrentRoute(response.data);
             setIsNavigating(true);
-            return response.data;
         } catch (error) {
-            console.error("Fetch Route Error:", error);
-            alert("Failed to get route. Please try again.");
+            console.error("Route Fetch Error:", error);
+            alert("Failed to calculate routes. Check console.");
         } finally {
             setLoading(false);
         }
@@ -36,32 +45,24 @@ export const AppProvider = ({ children }) => {
 
     const resetNavigation = () => {
         setIsNavigating(false);
+        setIsDriving(false);
         setCurrentRoute(null);
-        setStartAddress('');
-        setEndAddress('');
     };
 
     return (
         <AppContext.Provider value={{
             currentRoute, setCurrentRoute,
             isNavigating, setIsNavigating,
-            loading, setLoading,
+            isDriving, setIsDriving,
+            loading, hazards, setHazards,
             startAddress, setStartAddress,
             endAddress, setEndAddress,
             startCoords, setStartCoords,
-            hazards, setHazards,
-            fetchRoute,
-            resetNavigation
+            fetchRoute, resetNavigation, fetchHazards
         }}>
             {children}
         </AppContext.Provider>
     );
 };
 
-export const useApp = () => {
-    const context = useContext(AppContext);
-    if (!context) {
-        throw new Error("useApp must be used within an AppProvider");
-    }
-    return context;
-};
+export const useApp = () => useContext(AppContext);

@@ -2,24 +2,28 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 
 const SpeedLimit = () => {
-    const { isNavigating, selectedRoute } = useApp();
-    if (!isNavigating || !selectedRoute) return null;
+    const { currentRoute } = useApp();
+    if (!currentRoute) return null;
 
-    // Logic: Reduce speed based on Risk Score
-    const calculateSafeSpeed = (riskScore) => {
-        let baseSpeed = 50; // City default
-        // Simple logic: higher risk = lower speed
-        const reduction = (riskScore / 10) * 0.05; 
-        return Math.round(baseSpeed * (1 - reduction));
+    const { score } = currentRoute.routes.safest.safety;
+    const { precipitation } = currentRoute.weather;
+
+    // AI logic for speed recommendation based on risk
+    const getSafeSpeed = () => {
+        let baseSpeed = 60; // Standard city speed
+        if (score > 50) baseSpeed -= 15;
+        if (score > 75) baseSpeed -= 25;
+        if (precipitation > 1.0) baseSpeed -= 10;
+        return Math.max(20, baseSpeed);
     };
 
-    const speed = calculateSafeSpeed(selectedRoute.safety.score);
-
     return (
-        <div className="speed-limit-sign" title="AI Recommended Safe Speed">
-            <div className="label">SAFE</div>
-            <div className="speed">{speed}</div>
-            <div className="unit">km/h</div>
+        <div className="speed-limit-overlay">
+            <div className="speed-circle">
+                <span className="speed-value">{getSafeSpeed()}</span>
+                <span className="speed-unit">km/h</span>
+            </div>
+            <p>AI Recommended Safe Speed</p>
         </div>
     );
 };

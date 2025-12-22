@@ -1,23 +1,30 @@
 import React from 'react';
+import { useApp } from '../../context/AppContext';
 
-const WeatherHUD = ({ data }) => {
-    const { weather, recommendation } = data;
+const WeatherHUD = () => {
+    const { currentRoute } = useApp();
+    if (!currentRoute) return null;
+
+    const { weather, routes } = currentRoute;
 
     return (
         <div className="weather-hud">
-            <h3>Route Safety Score</h3>
-            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0' }}>
-                {data.routes.safest.safety.score}/100
+            <h3>Live Environment</h3>
+            <div className="weather-grid">
+                <div className="weather-item">🌡️ {Math.round(weather.temperature)}°C</div>
+                <div className="weather-item">💨 {weather.windSpeed} km/h</div>
+                <div className="weather-item">🌧️ {weather.precipitation} mm</div>
             </div>
             
-            <p><strong>Recommendation:</strong> {recommendation.text}</p>
-            
-            <hr />
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>🌡️ {Math.round(weather.temperature)}°C</div>
-                <div>💨 {weather.windSpeed} km/h</div>
-                <div>🌧️ {weather.precipitation}mm</div>
+            <div className="safety-comparison">
+                <div className="comparison-card fast">
+                    <span>⚡ Fast Route</span>
+                    <strong>Score: {routes.fastest.safety.score}</strong>
+                </div>
+                <div className="comparison-card safe">
+                    <span>🛡️ Safe Route</span>
+                    <strong>Score: {routes.safest.safety.score}</strong>
+                </div>
             </div>
         </div>
     );
