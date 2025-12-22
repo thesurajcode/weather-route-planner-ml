@@ -3,15 +3,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 
-// ✅ IMPORT THE PROVIDER
-// Make sure this path is correct based on your folder structure
+// ✅ Correct path based on your 'context' folder
 import { AppProvider } from './context/AppContext';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {/* ✅ WRAP THE APP IN THE PROVIDER */}
-    <AppProvider>
+    <AppProvider> 
       <App />
     </AppProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );
