@@ -1,41 +1,36 @@
-import React from 'react';
-import { MapContainer as LeafletMap, TileLayer, Marker, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { useApp } from '../../context/AppContext';
-import RouteLayer from './RouteLayer';
-import HazardMarkers from './HazardMarkers';
-
-// Fix for default Leaflet icons
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-let DefaultIcon = L.icon({ iconUrl: icon, shadowUrl: iconShadow, iconSize: [25, 41], iconAnchor: [12, 41] });
-L.Marker.prototype.options.icon = DefaultIcon;
+import { useMapEvents, Popup } from 'react-leaflet';
+// ... existing imports
 
 const MapContainer = () => {
-    const { currentRoute, startCoords } = useApp();
-    const defaultCenter = [28.6139, 77.2090]; // Delhi
+    const { currentRoute, startCoords, hazards } = useApp();
+    const [reportPos, setReportPos] = useState(null);
+
+    // Sub-component to handle map clicks
+    const MapEvents = () => {
+        useMapEvents({
+            click(e) {
+                setReportPos(e.latlng);
+            },
+        });
+        return null;
+    };
 
     return (
         <div style={{ height: '100%', width: '100%' }}>
-            <LeafletMap center={defaultCenter} zoom={12} style={{ height: '100%', width: '100%' }}>
-                <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                />
+            <LeafletMap center={[28.6139, 77.2090]} zoom={12} style={{ height: '100%', width: '100%' }}>
+                <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
+                <MapEvents />
                 
-                {/* 1. Draw the Routes (Blue and Green lines) */}
-                {currentRoute && <RouteLayer routes={currentRoute.routes} />}
-                
-                {/* 2. Show reported hazards */}
-                <HazardMarkers />
-
-                {/* 3. Start Marker */}
-                {startCoords && (
-                    <Marker position={startCoords.split(',').map(Number)} />
+                {/* Show Report Menu on Click */}
+                {reportPos && (
+                    <Popup position={reportPos} onClose={() => setReportPos(null)}>
+                        <ReportMenu position={reportPos} onClose={() => setReportPos(null)} />
+                    </Popup>
                 )}
+
+                {currentRoute && <RouteLayer routes={currentRoute.routes} />}
+                <HazardMarkers />
             </LeafletMap>
         </div>
     );
 };
-
-export default MapContainer;
