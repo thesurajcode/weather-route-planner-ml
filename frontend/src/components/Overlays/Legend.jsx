@@ -1,18 +1,22 @@
 import React from 'react';
+import { useApp } from '../../context/AppContext';
 
 const Legend = () => {
+    const { currentRoute } = useApp();
+    
     return (
         <div className="map-legend-overlay">
-            <h4>Research Model Guide</h4>
+            <h4>Route Metrics</h4>
             <div className="legend-item">
-                <span className="line green-solid"></span>
-                <span>Safest ($R_{safe}$): ML + Weather + Mongo</span>
+                {/* ✅ CORRECT: Quotes around "line safe" */}
+                <span className="line safe"></span> 
+                Safest: {currentRoute?.routes?.safest?.safety?.score || '--'}/100
             </div>
             <div className="legend-item">
-                <span className="line blue-dashed"></span>
-                <span>Fastest ($R_{fast}$): Geoapify Optimized</span>
+                <span className="line fast"></span> 
+                Fastest: {currentRoute?.routes?.fastest?.safety?.score || '--'}/100
             </div>
-            <div className="legend-divider"></div>
+            <hr />
             <div className="hazard-icons">
                 <span>💥 Accident</span>
                 <span>👮 Police</span>
