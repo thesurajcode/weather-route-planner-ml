@@ -1,74 +1,56 @@
 const express = require('express');
 const router = express.Router();
-const Hazard = require('../models/Hazard');
-// ✅ Import the new helper
 const { calculateRoutes, getCoordinates } = require('../services/routeService');
 const { getWeatherForCoords } = require('../services/weatherService');
+const Hazard = require('../models/Hazard');
 
-// --- GET ROUTE (The Brain) ---
 router.post('/route', async (req, res) => {
-    const { start, end } = req.body; 
-    if (!start || !end) return res.status(400).json({ error: 'Start and End required.' });
-
+    const { start, end } = req.body;
     try {
-        // 1. ✅ FIX: Convert text (e.g. "Delhi") to Coords (e.g. "28.6,77.2") FIRST
-        // This prevents the "Weather API 400" error
+        // 1. Convert text to coordinates for weather and routing
         const startCoords = await getCoordinates(start);
-        const [startLat, startLon] = startCoords.split(',');
+        const [lat, lon] = startCoords.split(',');
 
-        // 2. Now fetch weather using valid numbers
-        const weather = await getWeatherForCoords(startLat, startLon);
+        // 2. Fetch Real-time Weather and AQI
+        const weather = await getWeatherForCoords(lat, lon);
 
-        // 3. Calculate Routes 
-        // We pass the original 'start'/'end' because calculateRoutes also does its own checking
+        // 3. Analyze 3 alternative routes from Geoapify
         const analyzedRoutes = await calculateRoutes(start, end, weather);
 
-        // 4. Sort Results
-        const fastest = [...analyzedRoutes].sort((a, b) => 
-            parseFloat(a.summary.duration) - parseFloat(b.summary.duration)
-        )[0];
+        // 4. Optimization: Identify distinct routes
+        // Safest = Lowest combined AI/Hazard score
+        const safest = [...analyzedRoutes].sort((a, b) => a.safety.score - b.safety.score)[0];
+        // Fastest = Shortest raw duration
+        const fastest = [...analyzedRoutes].sort((a, b) => a.summary.rawDuration - b.summary.rawDuration)[0];
 
-        const safest = [...analyzedRoutes].sort((a, b) => 
-            a.safety.score - b.safety.score
-        )[0];
-
-        // 5. Send Response
         res.json({
             weather,
-            routes: { fastest, safest, count: analyzedRoutes.length },
+            routes: { fastest, safest },
             recommendation: {
-                shouldWait: weather.precipitation > 2.0 || safest.safety.score > 80,
-                text: safest.safety.score > 80 
-                    ? "⚠️ HIGH RISK: Hazards detected. Recommend delaying travel." 
-                    : "✅ Conditions are good. Use the Safe Route."
+                text: safest.safety.score > 70 
+                    ? "⚠️ High Risk detected. AI recommends the Safest Route." 
+                    : "✅ Conditions are stable. Fastest Route is recommended."
             }
         });
-
     } catch (error) {
-        console.error("Route Error:", error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// --- HAZARD REPORTING ---
+// Hazard Reporting Endpoints
 router.post('/report-hazard', async (req, res) => {
     try {
-        const { latitude, longitude, hazardType, description } = req.body;
-        const newReport = new Hazard({ latitude, longitude, hazardType, description });
+        const newReport = new Hazard(req.body);
         await newReport.save();
-        res.status(201).json({ message: 'Reported', report: newReport });
-    } catch (error) {
-        res.status(500).json({ error: 'Server Error' });
-    }
+        res.status(201).json(newReport);
+    } catch (err) { res.status(500).json({ error: 'Failed to report' }); }
 });
 
 router.get('/hazards', async (req, res) => {
     try {
         const hazards = await Hazard.find().sort({ reportedAt: -1 });
         res.json(hazards);
-    } catch (error) {
-        res.status(500).json({ error: 'Server Error' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Failed to fetch' }); }
 });
 
 module.exports = router;
