@@ -1,20 +1,19 @@
 import React from 'react';
 import './App.css'; 
 
-// ✅ CORRECT: Points to 'Map' folder
+// Components - We'll create these in the next steps
 import MapContainer from './components/Map/MapContainer'; 
-
-// ✅ CORRECT: Points to 'Controls' folder (Matches your screenshot)
 import SearchBar from './components/Controls/SearchBar'; 
+import WeatherHUD from './components/Overlays/WeatherHUD';
 
 import { useApp } from './context/AppContext';
 
 function App() {
-  const { isNavigating, routeData, resetNavigation } = useApp();
+  const { isNavigating, currentRoute, loading } = useApp();
 
   return (
     <div className="app-container">
-      {/* 1. HEADER & SEARCH AREA */}
+      {/* --- HEADER --- */}
       <header className="app-header">
         <div className="logo-area">
           <h1>🛡️ SafeRoute AI</h1>
@@ -25,35 +24,21 @@ function App() {
         </div>
       </header>
 
-      {/* 2. MAIN CONTENT (Map) */}
+      {/* --- MAIN CONTENT (MAP) --- */}
       <main className="map-section">
+        {loading && (
+          <div className="map-overlay-loading">
+            <div className="spinner"></div>
+            <p>Analyzing Route Safety...</p>
+          </div>
+        )}
         <MapContainer />
       </main>
 
-      {/* 3. SAFETY HUD */}
-      {isNavigating && routeData && (
-        <div className="safety-panel">
-          <div className="panel-header">
-            <h3>Route Analysis</h3>
-            <button onClick={resetNavigation} className="close-btn">✖</button>
-          </div>
-          
-          <div className="route-stats">
-             <div className={`status-card ${routeData.recommendation.shouldWait ? 'danger' : 'safe'}`}>
-                <span className="icon">{routeData.recommendation.shouldWait ? '⚠️' : '✅'}</span>
-                <p>{routeData.recommendation.text}</p>
-             </div>
-
-             <div className="weather-card">
-                <h4>Weather Impact</h4>
-                <div className="weather-grid">
-                  <span>🌡️ {Math.round(routeData.weather.temperature)}°C</span>
-                  <span>💨 {Math.round(routeData.weather.windSpeed)} km/h</span>
-                  <span>🌧️ {routeData.weather.precipitation > 0 ? 'Rainy' : 'Dry'}</span>
-                </div>
-             </div>
-          </div>
-        </div>
+      {/* --- SAFETY & WEATHER OVERLAY --- */}
+      {/* This only shows up after you click "Get Route" */}
+      {isNavigating && currentRoute && (
+        <WeatherHUD data={currentRoute} />
       )}
     </div>
   );

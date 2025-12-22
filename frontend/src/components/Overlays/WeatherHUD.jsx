@@ -1,61 +1,23 @@
 import React from 'react';
-import { useApp } from '../../context/AppContext';
 
-const WeatherHUD = () => {
-    const { routeData, selectedRoute } = useApp();
-    
-    // Hide if no route is loaded yet
-    if (!routeData || !routeData.weather || !selectedRoute) return null;
-
-    const { weather } = routeData;
-    const { safety } = selectedRoute;
-
-    // Logic: Calculate Safe Speed
-    const calculateSafeSpeed = (riskScore) => {
-        let baseSpeed = 50; // City
-        if (selectedRoute.summary.distance.includes("km")) {
-            const dist = parseFloat(selectedRoute.summary.distance);
-            if (dist > 15) baseSpeed = 80; // Highway
-        }
-        // Reduce speed if risk is high
-        const reduction = (riskScore / 10) * 0.05; 
-        return Math.round(baseSpeed * (1 - reduction));
-    };
-
-    const safeSpeed = calculateSafeSpeed(safety.score);
+const WeatherHUD = ({ data }) => {
+    const { weather, recommendation } = data;
 
     return (
-        <div className="hud-container">
-            {/* Header */}
-            <div className="hud-header" style={{ borderBottom: `3px solid ${safety.color}` }}>
-                <div className="risk-badge" style={{ backgroundColor: safety.color }}>
-                    {Math.round(safety.score)}% RISK
-                </div>
-                <span style={{fontSize: '13px', fontWeight: 'bold'}}>{safety.message}</span>
+        <div className="weather-hud">
+            <h3>Route Safety Score</h3>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0' }}>
+                {data.routes.safest.safety.score}/100
             </div>
-
-            {/* Grid */}
-            <div className="hud-grid">
-                {/* Safe Speed */}
-                <div className="hud-item speed-box">
-                    <span className="label">SAFE SPEED</span>
-                    <div className="value-large">
-                        {safeSpeed} <span className="unit">km/h</span>
-                    </div>
-                </div>
-
-                {/* Weather */}
-                <div className="hud-details">
-                    <div className="detail-row">
-                        <span>🌡️ Temp</span> <strong>{weather.temperature}°C</strong>
-                    </div>
-                    <div className="detail-row">
-                        <span>💨 Wind</span> <strong>{weather.wind_speed || 12} km/h</strong>
-                    </div>
-                    <div className="detail-row">
-                        <span>🌫️ AQI</span> <strong>{weather.aqi}</strong>
-                    </div>
-                </div>
+            
+            <p><strong>Recommendation:</strong> {recommendation.text}</p>
+            
+            <hr />
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>🌡️ {Math.round(weather.temperature)}°C</div>
+                <div>💨 {weather.windSpeed} km/h</div>
+                <div>🌧️ {weather.precipitation}mm</div>
             </div>
         </div>
     );

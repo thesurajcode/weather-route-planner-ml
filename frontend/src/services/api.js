@@ -1,8 +1,11 @@
 import axios from 'axios';
 
 const api = axios.create({
-  // ✅ Replace with your actual Render backend URL
-  baseURL: 'https://route-safety-backend.onrender.com/api', 
+  // This points to your Node.js backend on Render
+  baseURL: 'https://route-safety-backend.onrender.com/api',
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 export default api;
