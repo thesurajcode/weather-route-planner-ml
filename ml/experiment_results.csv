@@ -1,0 +1,11 @@
+route_id,start,end,mode,distance_km,duration_min,risk_score,ml_risk,zone_count,hazard_count,weather,aqi
+R1,India Gate,Sarita Vihar,fast,13.2,17.98,40,0,0,0,Fog,167
+R1,India Gate,Sarita Vihar,safe,13.2,17.98,100,57.9,2,,Fog,167
+R2,Connaught Place,Noida Sector 18,fast,17.14,19.31,40,0,0,0,Fog,165
+R2,Connaught Place,Noida Sector 18,safe,17.14,19.31,74.7,57.9,0,,Fog,165
+R3,IIT Delhi,Gurugram Cyber Hub,fast,20.31,20.32,40,0,0,0,Fog,169
+R3,IIT Delhi,Gurugram Cyber Hub,safe,20.31,20.32,74.7,57.9,0,,Fog,169
+R4,AIIMS Delhi,Faridabad,fast,30.89,37.82,40,0,0,0,Fog,167
+R4,AIIMS Delhi,Faridabad,safe,30.89,37.82,100,57.9,2,,Fog,167
+R5,Karol Bagh,Rajouri Garden,fast,10.94,13.9,40,0,0,0,Fog,167
+R5,Karol Bagh,Rajouri Garden,safe,10.94,13.9,89.7,57.9,1,,Fog,167

@@ -1,0 +1,10 @@
+[
+  { "id": "Z1", "name": "Punjabi Bagh Chowk", "lat": 28.6686, "lon": 77.1322, "radius": 500 },
+  { "id": "Z2", "name": "Mukarba Chowk", "lat": 28.7391, "lon": 77.1692, "radius": 500 },
+  { "id": "Z3", "name": "Zakhira Flyover", "lat": 28.6575, "lon": 77.1588, "radius": 500 },
+  { "id": "Z4", "name": "Sarita Vihar Flyover", "lat": 28.5286, "lon": 77.2890, "radius": 500 },
+  { "id": "Z5", "name": "Bhalswa Chowk", "lat": 28.7440, "lon": 77.1653, "radius": 500 },
+  { "id": "Z6", "name": "Okhla More", "lat": 28.5607, "lon": 77.2730, "radius": 500 },
+  { "id": "Z7", "name": "Maya Puri Chowk", "lat": 28.6202, "lon": 77.1229, "radius": 500 },
+  { "id": "Z8", "name": "Rama Road Crossing", "lat": 28.6620, "lon": 77.1484, "radius": 500 }
+]

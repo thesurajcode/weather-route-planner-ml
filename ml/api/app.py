@@ -5,42 +5,39 @@ import pandas as pd
 import os
 
 app = Flask(__name__)
-CORS(app)  # Allows your Node.js backend to talk to this
+# ✅ Allow requests from any local port (Frontend 5173, Backend 5000)
+CORS(app) 
 
-# --- 1. ROBUST MODEL LOADING ---
 print("⏳ Loading AI Models...")
 
-# Get the absolute path to the 'ml' folder
-# We assume this file is in ml/api/app.py
+# --- PATH CONFIGURATION ---
+# Assuming structure: weather-route-planner-ml/api/app.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
-ML_DIR = os.path.abspath(os.path.join(BASE_DIR, '..')) # Go up to 'ml'
-MODELS_DIR = os.path.join(ML_DIR, 'models')
+MODELS_DIR = os.path.abspath(os.path.join(BASE_DIR, '../models'))
 
 MODEL_PATH = os.path.join(MODELS_DIR, 'risk_model.pkl')
 ENCODER_PATH = os.path.join(MODELS_DIR, 'encoders.pkl')
 
+# --- MODEL LOADING ---
 try:
     with open(MODEL_PATH, 'rb') as f:
         model = pickle.load(f)
     with open(ENCODER_PATH, 'rb') as f:
         encoders = pickle.load(f)
-        # Extract individual encoders
         le_weather = encoders['weather']
         le_road = encoders['road']
         le_surface = encoders['surface']
         
     print("✅ Models & Encoders loaded successfully!")
-except FileNotFoundError:
-    print(f"❌ Error: Model files not found at {MODEL_PATH}")
-    print("Did you run 'python train_model.py'?")
+except Exception as e:
+    print(f"❌ Error loading models: {e}")
+    print(f"Checking path: {MODEL_PATH}")
     model = None
 
 @app.route('/', methods=['GET'])
 def home():
-    if model:
-        return jsonify({"status": "ML API is Running", "brain_status": "Active"})
-    else:
-        return jsonify({"status": "Error", "message": "Models not loaded"}), 500
+    status = "Active" if model else "Inactive (Model Failed)"
+    return jsonify({"status": "ML API Running", "brain": status})
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -48,52 +45,49 @@ def predict():
         return jsonify({"error": "Model is not loaded"}), 500
 
     try:
-        # 1. Get Data from Request
         data = request.get_json()
         
-        # Inputs: Match exactly what 'generate_data.py' produced
+        # 1. Parse Inputs (with defaults)
         weather_input = data.get('weather', 'Clear')
         road_input = data.get('road_type', 'City')
-        surface_input = data.get('surface', 'Dry') # New Feature!
+        surface_input = data.get('surface', 'Dry') # This likely comes from backend logic
 
-        # 2. Helper: Safe Transform (Handle unknown values)
+        # 2. Helper for Encoding
         def safe_transform(encoder, value):
             try:
                 return encoder.transform([value])[0]
-            except ValueError:
-                # If "Snow" comes but we never trained on Snow, use the first known class
+            except:
                 return encoder.transform([encoder.classes_[0]])[0]
 
-        # 3. Encode Inputs
+        # 3. Encode
         w_code = safe_transform(le_weather, weather_input)
         r_code = safe_transform(le_road, road_input)
         s_code = safe_transform(le_surface, surface_input)
 
-        # 4. Create DataFrame (Must match training columns EXACTLY)
+        # 4. Predict Severity (1-10)
         features = pd.DataFrame([[w_code, r_code, s_code]], 
                                 columns=['Weather_Code', 'Road_Code', 'Surface_Code'])
-
-        # 5. Predict
-        # The model returns a number between 1 and 10
+        
         severity_score = model.predict(features)[0]
 
-        # 6. Convert to Risk Percentage (0-100)
-        risk_percentage = min(100, max(0, severity_score * 10))
-
-        return jsonify({
-            "risk_score": round(risk_percentage, 1),
-            "severity_level": "High" if risk_percentage > 70 else "Medium" if risk_percentage > 40 else "Low",
-            "inputs_received": {
-                "weather": weather_input,
-                "road": road_input,
-                "surface": surface_input
-            }
-        })
+        # 5. Format Response
+        # The backend expects 'estimated_risk_score' (0-100)
+        risk_score = min(100, max(0, severity_score * 10))
+        
+        response = {
+            "estimated_risk_score": round(risk_score, 1), # Backend looks for this specific key
+            "severity": "High" if risk_score > 70 else "Medium" if risk_score > 40 else "Low",
+            "prediction_class": int(severity_score)
+        }
+        
+        print(f"🔮 Prediction: {response}") # Log to terminal
+        return jsonify(response)
 
     except Exception as e:
-        print(f"Prediction Error: {e}")
+        print(f"❌ Prediction Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Run on 5002 so it doesn't conflict with Node.js
-    app.run(port=5002, debug=True)
+    # ✅ Run on Port 5001 to match your Backend .env
+    print("🚀 ML Service starting on http://127.0.0.1:5001")
+    app.run(host='0.0.0.0', port=5001, debug=True)

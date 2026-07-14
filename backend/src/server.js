@@ -1,40 +1,58 @@
-require('dotenv').config();
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const routes = require('./api/routes');
+import hazardRoutes from "./routes/hazards.js";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
+import express from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import routeRoutes from "./routes/route.js";
+
+/* --------------------------------------------------
+   ✅ FIX: Proper .env loading for ESM + Windows
+-------------------------------------------------- */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Explicitly load .env from backend root
+dotenv.config({ path: path.join(__dirname, "../.env") });
+
+/* --------------------------------------------------
+   App setup
+-------------------------------------------------- */
 const app = express();
-const PORT = process.env.PORT || 10000;
-
-// 1. Middleware
+app.use(cors());
 app.use(express.json());
-app.use(cors({
-    origin: [
-        "http://localhost:5173",                     // Vite Local
-        "http://localhost:3000",                     // CRA Local
-        "https://route-safety-frontend.onrender.com" // Deployed Frontend
-    ],
-    credentials: true
-}));
 
-// 2. Database Connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/safe_route_db';
-console.log("Attempting to connect to database...");
-
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ MongoDB Connected Successfully'))
-    .catch((err) => console.error('❌ MongoDB Connection Error:', err));
-
-// 3. API Routes
-app.use('/api', routes);
-
-// 4. Basic Health Check
-app.get('/', (req, res) => {
-    res.send('✅ Route Safety Backend is Running!');
+/* --------------------------------------------------
+   ✅ ENV DEBUG (keep for now, remove later)
+-------------------------------------------------- */
+console.log("ENV CHECK:", {
+  PORT: process.env.PORT,
+  MONGO_URI: process.env.MONGO_URI ? "✔ loaded" : "❌ missing",
+  GEOAPIFY_API_KEY: process.env.GEOAPIFY_API_KEY ? "✔ loaded" : "❌ missing",
+  OPENWEATHERMAP_API_KEY: process.env.OPENWEATHERMAP_API_KEY ? "✔ loaded" : "❌ missing"
 });
 
-// 5. Start Server
+/* --------------------------------------------------
+   MongoDB
+-------------------------------------------------- */
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch(err => console.error("Mongo error:", err));
+
+/* --------------------------------------------------
+   Routes
+-------------------------------------------------- */
+app.use("/api/routes", routeRoutes);
+app.use("/api/hazards", hazardRoutes); // ✅ ADD THIS
+
+/* --------------------------------------------------
+   Server start
+-------------------------------------------------- */
+const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
