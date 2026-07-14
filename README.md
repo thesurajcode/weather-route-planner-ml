@@ -58,7 +58,7 @@ Supported hazard types:
 - Water Logging
 - Traffic
 
-![Hazard Types](docs/images/hazard-type.png)
+![Hazard Types](docs/images/hazard-types.png)
 
 ---
 
